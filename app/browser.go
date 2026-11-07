@@ -1223,7 +1223,9 @@ func (b *Browser) dispatchMouse(m Msg) {
 func (b *Browser) sendMouse(t *Tab, v View, m Msg, mods int) error {
 	x, y := clamp01(m.X)*float64(v.Width), clamp01(m.Y)*float64(v.Height)
 	if m.Event == "wheel" {
-		_, err := chromedp.Call(t.ctx, dispatchWheel, wheelParams{Type: string(input.DispatchMouseEventTypeMouseWheel), X: x, Y: y, DeltaX: m.DX, DeltaY: m.DY, Modifiers: int64(mods)})
+		ctx, cancel := inputCtx(t)
+		defer cancel()
+		_, err := chromedp.Call(ctx, dispatchWheel, wheelParams{Type: string(input.DispatchMouseEventTypeMouseWheel), X: x, Y: y, DeltaX: m.DX, DeltaY: m.DY, Modifiers: int64(mods)})
 		return err
 	}
 	p := input.DispatchMouseEventParams{X: x, Y: y, Modifiers: int64(mods), Buttons: int64(m.Buttons), Button: input.MouseButtonNone}
@@ -1250,8 +1252,16 @@ func (b *Browser) sendMouse(t *Tab, v View, m Msg, mods int) error {
 	default:
 		return nil
 	}
-	_, err := chromedp.Call(t.ctx, input.DispatchMouseEvent, p)
+	ctx, cancel := inputCtx(t)
+	defer cancel()
+	_, err := chromedp.Call(ctx, input.DispatchMouseEvent, p)
 	return err
+}
+
+// inputCtx bounds one input command, so a page that hangs can't stall the queue
+// (and every later click and key) forever.
+func inputCtx(t *Tab) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(t.ctx, 5*time.Second)
 }
 
 // ---------- Keyboard ----------
@@ -1318,12 +1328,14 @@ func (b *Browser) Key(m Msg, onCopy func(string)) {
 
 	wantCopy := m.Event != "up" && shortcut && (lower == "c" || lower == "x")
 	b.onTab(func(t *Tab) error {
+		ctx, cancel := inputCtx(t)
+		defer cancel()
 		if wantCopy {
-			if s, err := chromedp.Run(t.ctx, chromedp.Evaluate[string](selectionJS)); err == nil && s != "" {
+			if s, err := chromedp.Run(ctx, chromedp.Evaluate[string](selectionJS)); err == nil && s != "" {
 				onCopy(s)
 			}
 		}
-		_, err := chromedp.Call(t.ctx, input.DispatchKeyEvent, p)
+		_, err := chromedp.Call(ctx, input.DispatchKeyEvent, p)
 		return err
 	})
 }
@@ -1334,7 +1346,9 @@ func (b *Browser) Text(s string) {
 		return
 	}
 	b.onTab(func(t *Tab) error {
-		_, err := chromedp.Call(t.ctx, input.InsertText, input.InsertTextParams{Text: s})
+		ctx, cancel := inputCtx(t)
+		defer cancel()
+		_, err := chromedp.Call(ctx, input.InsertText, input.InsertTextParams{Text: s})
 		return err
 	})
 }

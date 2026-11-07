@@ -198,7 +198,7 @@ function onMessage(m) {
 // MEMBERS & CONTROL
 // =====================================================================
 const amCtrl = () => !!(state.ctrl && state.me && state.ctrl.id === state.me.id);
-const canControl = () => amCtrl(); // you drive only after clicking "Take control" / "Take over"
+const canControl = () => amCtrl() || !state.ctrl; // nobody in control: acting takes control
 const lockText = () => state.ctrl
   ? `${state.ctrl.name} is in control — click “Take over” below to drive`
   : "Click “Take control” below to drive";

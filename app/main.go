@@ -110,9 +110,10 @@ type Hub struct {
 	agent     *Client // the AI agent: has no connection, shown in the room once it acts
 	agentOn   bool
 	agentLast time.Time
-	agentBusy bool    // a tool call is running (it may be waiting for the page): not idle
-	agentFrom *Client // the person the agent took control from; gets it back when the agent is done
-	blocked   *User   // set while someone has blocked the agent from taking control
+	agentBusy bool      // a tool call is running (it may be waiting for the page): not idle
+	agentFrom *Client   // the person the agent took control from; gets it back when the agent is done
+	blocked   *User     // set while someone has blocked the agent from taking control
+	humanLast time.Time // last time the person in control sent input (the agent waits while they are active)
 }
 
 // Bright colors that read well on a dark background.
@@ -284,6 +285,7 @@ func (h *Hub) handle(c *Client, m Msg) {
 		h.save()
 
 	case "control_take":
+		h.humanLast = time.Now()
 		if h.ctrl != c {
 			h.agentFrom = nil
 			h.setCtrl(c)
@@ -314,9 +316,14 @@ func (h *Hub) handle(c *Client, m Msg) {
 		if h.browser == nil {
 			return
 		}
-		if h.ctrl != c { // only whoever clicked "Take control" / "Take over" can drive
+		if h.ctrl == nil && m.Type != "view" && !(m.Type == "mouse" && m.Event == "move") { // nobody drives: whoever acts first takes control
+			h.agentFrom = nil
+			h.setCtrl(c)
+		}
+		if h.ctrl != c { // only whoever is in control can drive
 			return
 		}
+		h.humanLast = time.Now()
 		b := h.browser
 		switch m.Type {
 		case "nav":

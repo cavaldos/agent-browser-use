@@ -9,6 +9,7 @@ package main
 // then stops and its next step reports that a human is in control.
 
 import (
+	"context"
 	_ "embed"
 	"encoding/base64"
 	"encoding/json"
@@ -16,6 +17,7 @@ import (
 	"fmt"
 	"math"
 	"os/exec"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -85,12 +87,18 @@ func (h *Hub) agentDone() {
 
 var errBlocked = errors.New("agent blocked")
 
+// humanGrace: the agent won't take control from a person who used the browser this recently.
+const humanGrace = 8 * time.Second
+
 // agentTake gives control to the agent, taking it from a person if needed, unless someone blocked the agent.
 func (h *Hub) agentTake() error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.blocked != nil {
 		return fmt.Errorf("%w: %s blocked the agent from using the browser. Wait until they click “Unblock”, or ask them to (browser_say), then try again", errBlocked, h.blocked.Name)
+	}
+	if h.ctrl != nil && h.ctrl != h.agent && time.Since(h.humanLast) < humanGrace {
+		return fmt.Errorf("%w: %s is using the browser right now. Wait a few seconds and try again, or ask them (browser_say)", errBlocked, h.ctrl.user.Name)
 	}
 	if h.ctrl != h.agent {
 		h.agentFrom = h.ctrl // nil when nobody was driving
@@ -182,13 +190,40 @@ func (a *Agent) act(f func(t *Tab) error) error {
 }
 
 // look runs f on the active tab without needing control (reading only).
-func (a *Agent) look(f func(t *Tab) error) error { return a.b.run(f) }
+// Reads skip the input queue, so the agent watching or snapshotting the page
+// never makes a person's clicks and keys wait.
+func (a *Agent) look(f func(t *Tab) error) error {
+	a.b.mu.Lock()
+	t := a.b.active
+	a.b.mu.Unlock()
+	if t == nil {
+		return errors.New("no tab is open")
+	}
+	return f(t)
+}
 
 // evalJS runs expr in the page after installing the helpers from agent.js.
 func evalJS[T any](t *Tab, expr string) (T, error) {
-	v, err := chromedp.Run(t.ctx, chromedp.Evaluate[T](agentJS+"\n;"+expr, chromedp.EvalAwaitPromise))
+	ctx, cancel := context.WithTimeout(t.ctx, 30*time.Second) // a hung page must not hang the agent
+	defer cancel()
+	// Usually the helper is already in the page: skip sending its 20KB source each time.
+	v, err := chromedp.Run(ctx, chromedp.Evaluate[T](agentReady+expr, chromedp.EvalAwaitPromise))
+	if err != nil && strings.Contains(jsError(err).Error(), agentMissing) {
+		v, err = chromedp.Run(ctx, chromedp.Evaluate[T](agentJS+"\n;"+expr, chromedp.EvalAwaitPromise))
+	}
 	return v, jsError(err)
 }
+
+const agentMissing = "__abu_missing__"
+
+// agentReady throws unless the current version of agent.js is loaded in the page.
+var agentReady = func() string {
+	m := regexp.MustCompile(`const V = (\d+);`).FindStringSubmatch(agentJS)
+	if m == nil {
+		return "throw new Error('" + agentMissing + "');\n"
+	}
+	return "if (!(window.__abu && window.__abu.v === " + m[1] + ")) throw new Error('" + agentMissing + "');\n"
+}()
 
 // jsError turns a JavaScript exception into its message, without the stack.
 func jsError(err error) error {

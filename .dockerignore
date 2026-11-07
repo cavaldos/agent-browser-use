@@ -1,0 +1,7 @@
+.git
+agent-browser-use
+data.json
+chrome-profile/
+Dockerfile
+Makefile
+.dockerignore

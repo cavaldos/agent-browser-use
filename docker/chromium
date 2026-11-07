@@ -1,0 +1,4 @@
+#!/bin/sh
+# Chromium inside a container: its own sandbox needs privileges a container doesn't have
+# (the container is the sandbox), and /dev/shm is small by default.
+exec /usr/bin/chromium --no-sandbox --disable-dev-shm-usage "$@"

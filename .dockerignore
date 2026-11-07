@@ -1,7 +1,7 @@
 .git
-agent-browser-use
+bin/
+docs/
+scripts/
 data.json
 chrome-profile/
-Dockerfile
 Makefile
-.dockerignore

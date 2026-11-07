@@ -1,12 +1,13 @@
 # agent-browser-use in a container: the Go server plus headless Chromium.
 #   make docker      build the image and run it on http://localhost:3000
+# Build context is the repo root: docker build -f docker/Dockerfile .
 
 # ---- Build ----
 FROM golang:1.26-bookworm AS build
 WORKDIR /src
-COPY go.mod go.sum ./
+COPY app/go.mod app/go.sum ./
 RUN go mod download
-COPY . .
+COPY app/ .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/agent-browser-use .
 
 # ---- Run ----

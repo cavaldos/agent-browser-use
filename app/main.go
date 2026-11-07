@@ -524,6 +524,9 @@ func main() {
 	fl.StringVar(&bo.StartURL, "start", "https://www.google.com", "page for new tabs")
 	fl.StringVar(&bo.Profile, "profile", "chrome-profile", "folder for the shared browser's cookies/logins")
 	fl.StringVar(&bo.ChromePath, "chrome", "", "path to Chrome (empty = auto-detect)")
+	fl.StringVar(&bo.DownloadDir, "downloads", "", "folder for downloaded files (empty = \"downloads\" next to the profile folder)")
+	fl.StringVar(&bo.UploadDir, "uploads", "", "folder the agent may upload files from (empty = \"uploads\" next to the profile folder)")
+	fl.StringVar(&bo.StateDir, "states", "", "folder for saved logins/sessions (empty = \"states\" next to the profile folder)")
 	var ao AgentOptions
 	fl.Float64Var(&ao.Speed, "agent-speed", 0, "pace of the AI agent's cursor and typing, for people who want to follow it: 0 instant, 1 normal, 2 slower")
 	fl.BoolVar(&ao.OpenViewer, "open", true, "open the web UI in your browser when the agent starts and nobody is watching")
@@ -564,6 +567,14 @@ func main() {
 	if !*noBrowser {
 		if abs, err := filepath.Abs(bo.Profile); err == nil {
 			bo.Profile = abs
+		}
+		base := filepath.Dir(bo.Profile)
+		for dir, name := range map[*string]string{&bo.DownloadDir: "downloads", &bo.UploadDir: "uploads", &bo.StateDir: "states"} {
+			if *dir == "" {
+				*dir = filepath.Join(base, name)
+			} else if abs, err := filepath.Abs(*dir); err == nil {
+				*dir = abs
+			}
 		}
 		b, err := startBrowser(h, bo)
 		if err != nil {

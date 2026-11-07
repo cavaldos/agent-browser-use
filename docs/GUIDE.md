@@ -119,6 +119,39 @@ on has a `ref` (for example `e12`). Pass that `ref` to the action tools. Every a
 | `browser_tabs` | List / open / switch / close tabs. Tabs a page opens (`target=_blank`) become the current tab automatically |
 | `browser_say` | Show a message to the people watching (on-screen caption + chat line) |
 
+### See what the page is doing
+
+| Tool | What it does |
+|---|---|
+| `browser_console_messages` | `console.*` calls, uncaught exceptions and browser warnings of the current page. `level` (error, warning, info, debug, all), `limit`, `clear`, `history` (also earlier pages) |
+| `browser_network_requests` | Requests of the current page: method, URL, status, type, time, size. `filter` (text or regex), `method`, `failedOnly`, `includeStatic`. `id` shows the headers of one request and `body: true` its response body (sensitive headers such as `Cookie` and `Authorization` are hidden) |
+
+Every action that returns a page snapshot (click, type, navigate…) also lists **Page problems since the last step**: new console errors/warnings and failed requests (4xx/5xx or network errors). The viewers see a `⚠️` line in the chat when that happens.
+
+### Files
+
+| Tool | What it does |
+|---|---|
+| `browser_downloads` | `list` downloaded files (with their path on the server), `wait` until a download finishes, `read` a text file |
+| `browser_file_upload` | Fill a file input (give `ref` of the input, or of its button/label). `paths` are names of files in the upload folder, or `files` (`name` + base64 `data`) are written there first |
+
+Downloads go to `downloads/` and uploads are read from `uploads/` (both next to the profile folder; change with `-downloads` and `-uploads`). Uploading refuses any file outside those two folders.
+
+### Cookies, storage and sessions
+
+| Tool | What it does |
+|---|---|
+| `browser_cookies` | `list` (current page, or `all`), `set`, `delete`, `clear` (everything, or one `domain`) |
+| `browser_storage` | `list`, `get`, `set`, `remove`, `clear` on localStorage (`type: local`) or sessionStorage (`type: session`) |
+| `browser_state` | `save` all cookies plus the current site's localStorage/sessionStorage under a `name`; `load`, `list`, `delete` them later (kept in `states/`, change with `-states`) |
+
+### Snapshot diff and device emulation
+
+| Tool | What it does |
+|---|---|
+| `browser_snapshot_diff` | What changed since the last snapshot you saw, or since a baseline saved earlier with `save: "name"` and used with `baseline: "name"` |
+| `browser_emulate` | `device`: iPhone 15, iPhone SE, iPad, Pixel 8, Galaxy S23, Galaxy Tab S9, Laptop, Desktop HD, or `reset`. Or set `width`/`height`/`scale`/`mobile`/`touch`/`userAgent`. Also `locale`, `timezone`, `colorScheme`, `latitude`/`longitude`, `network` (online, offline, slow-3g, fast-3g, 4g). Applies to every tab, resizes the shared screen to the device and reloads the page. No arguments shows the current settings |
+
 `alert`/`confirm` dialogs are accepted automatically, and their text appears in the chat.
 
 ## Options
@@ -178,6 +211,7 @@ printed at startup). They hear the page's audio, chat, send emoji reactions, and
 
 - `./agent-browser-use` keeps `chrome-profile/` (cookies/logins) in the current folder; `agent-browser-use mcp` keeps it in `~/.agent-browser-use/`.
 - Chat history is kept in memory only and is gone after a restart. Pass `-data chat.json` to keep it in a file.
+- Downloads, uploads and saved sessions live in `downloads/`, `uploads/` and `states/` next to the profile folder (`-downloads`, `-uploads`, `-states` to change).
 - Change the profile folder with `-profile`. Delete `chrome-profile/` to log out of everything.
 
 ## Security
@@ -186,6 +220,7 @@ printed at startup). They hear the page's audio, chat, send emoji reactions, and
   JavaScript in it, so only log into accounts you are fine with the agent using.
 - By default `/mcp` only accepts connections from this machine. It also rejects requests from other websites (checks `Origin`).
 - Anyone on your LAN with the link can open the viewer (port 3000) and drive the browser, so keep it on a trusted network.
+- `browser_file_upload` can only send files from the upload and download folders. Saved sessions in `states/` hold cookies and storage in plain files (mode 600): treat them like passwords.
 - Only `http(s)` addresses can be opened. `file://`, `chrome://` and similar are blocked.
 
 ## Limitations

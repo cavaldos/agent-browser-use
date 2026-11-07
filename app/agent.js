@@ -7,9 +7,10 @@
 //   get(ref)              the element itself (for browser_evaluate)
 //   hasText(s)            whether the page shows the text
 //   idleFor()             ms since the page last changed (clocks and timers ticking don't count)
+//   fileInput(ref)        the <input type=file> that belongs to the element (itself, inside it, or its label)
 //   watchStart/State/Stop wait for the page (or one element) to change on its own
 (() => {
-  const V = 4;
+  const V = 5;
   if (window.__abu && window.__abu.v === V) return;
 
   // Refs stay the same for the same element across snapshots.
@@ -373,6 +374,18 @@
     watch = null;
     return true;
   }
+  function fileInput(r) {
+    const el = get(r);
+    const isFile = (x) => x && x.tagName === "INPUT" && x.type === "file";
+    const found = isFile(el) ? el
+      : el.querySelector?.("input[type=file]")
+      || (isFile(el.control) ? el.control : null)
+      || el.closest?.("label")?.control
+      || el.closest?.("form")?.querySelector("input[type=file]")
+      || (document.querySelectorAll("input[type=file]").length === 1 ? document.querySelector("input[type=file]") : null);
+    if (!isFile(found)) throw new Error(`Ref ${r} is not a file input and no file input belongs to it. Snapshot the page and pick the upload control.`);
+    return found;
+  }
   const idleFor = () => Math.round(performance.now() - busyAt);
 
   const observer = new MutationObserver((ms) => {
@@ -385,7 +398,7 @@
 
   Object.defineProperty(window, "__abu", {
     value: { v: V, refs, ids, get n() { return n; }, get, snapshot, locate, prepareInput, selectOption, hasText,
-      idleFor, watchStart, watchState, watchStop, observer },
+      idleFor, watchStart, watchState, watchStop, observer, fileInput },
     configurable: true, enumerable: false, writable: true,
   });
 })();

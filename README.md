@@ -131,6 +131,11 @@ Then open **http://localhost:3000** to watch the agent work.
 | `browser_wait_for` / `browser_wait_for_change` | Wait for text, or for the page to change on its own |
 | `browser_take_screenshot` / `browser_evaluate` | Screenshot the tab, or run JavaScript in the page |
 | `browser_tabs` / `browser_say` | Manage tabs, or show a message to the people watching |
+| `browser_console_messages` / `browser_network_requests` | Console output, exceptions and network requests (status, headers, response body). Action results also list new console errors and failed requests |
+| `browser_downloads` / `browser_file_upload` | Wait for and read downloaded files; fill `<input type=file>` from the upload folder |
+| `browser_cookies` / `browser_storage` / `browser_state` | Read and change cookies and localStorage/sessionStorage; save and restore a whole login session by name |
+| `browser_snapshot_diff` | Only what changed on the page since the last snapshot or a named baseline |
+| `browser_emulate` | Phone/tablet presets, screen size, pixel ratio, touch, user agent, locale, time zone, dark mode, GPS location, network speed |
 
 See [docs/GUIDE.md](docs/GUIDE.md) for the full tool reference, options, the shared browser room, security and limitations.
 
@@ -146,6 +151,7 @@ make run ARGS="-no-mcp"               # disable /mcp, use only as a shared brows
 
 ## Security
 
+- Uploads only read from the upload folder (and the download folder), never from other places on the machine. Saved sessions (`states/`) contain cookies: treat them like passwords.
 - The shared browser keeps the cookies of every account you log into. The agent can read any open page and run JavaScript in it, so only log into accounts you are happy for the agent to use.
 - By default `/mcp` only accepts connections from the local machine, and it rejects requests from other websites.
 - Anyone who can reach port 3000 can open the viewer and drive the browser. Keep it on a trusted network.

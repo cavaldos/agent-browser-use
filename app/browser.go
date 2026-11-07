@@ -20,6 +20,7 @@ import (
 	"log"
 	"net"
 	"net/url"
+	"os"
 	"runtime"
 	"slices"
 	"strconv"
@@ -31,6 +32,8 @@ import (
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/input"
+	cdplog "github.com/chromedp/cdproto/log"
+	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
 	cdpruntime "github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/cdproto/target"
@@ -45,6 +48,9 @@ type BrowserOptions struct {
 	ChromePath    string // empty = auto-detect
 	Audio         bool
 	MaxTabs       int
+	DownloadDir   string // where Chrome saves downloads (also readable by browser_file_upload)
+	UploadDir     string // files the agent may upload
+	StateDir      string // saved cookie/storage states (browser_state)
 }
 
 // View is the size and image quality of the shared screen.
@@ -68,6 +74,8 @@ type Tab struct {
 	fresh                   bool // first page of a new tab: drop the about:blank history entry once it commits
 	navSeq                  int  // newest refreshNav wins
 	lastAudio               time.Time
+
+	obs *observer // console messages and network requests of this tab
 }
 
 // TabInfo is what the web UI gets for each tab.
@@ -111,6 +119,10 @@ type Browser struct {
 
 	nmu       sync.Mutex
 	notifying bool
+
+	ua  string    // Chrome's normal user agent (what "no emulation" means)
+	emu Emulation // device emulation, guarded by mu
+	dl  *downloads
 }
 
 // Binary packet types sent to the web clients (first byte).
@@ -286,12 +298,26 @@ func startBrowser(hub *Hub, opt BrowserOptions) (*Browser, error) {
 		known:       map[string]bool{},
 		view:        View{opt.Width, opt.Height, opt.Quality},
 		streams:     map[string]byte{},
+		ua:          ua,
+		dl:          newDownloads(),
+	}
+	for _, d := range []string{opt.DownloadDir, opt.UploadDir, opt.StateDir} {
+		if d != "" {
+			os.MkdirAll(d, 0o700)
+		}
 	}
 	firstBlank := chromedp.FromContext(root).Target.TargetID
 	b.known[string(firstBlank)] = true
 
 	if err := chromedp.ListenBrowser(root, b.onBrowserEvent); err != nil {
 		return nil, err
+	}
+	if opt.DownloadDir != "" {
+		ev := true
+		if _, err := chromedp.CallBrowser(root, browser.SetDownloadBehavior, browser.SetDownloadBehaviorParams{
+			Behavior: browser.SetDownloadBehaviorBehaviorAllow, DownloadPath: opt.DownloadDir, EventsEnabled: &ev}); err != nil {
+			log.Println("chrome: downloads:", err)
+		}
 	}
 	if _, err := b.openTab(opt.StartURL); err != nil {
 		return nil, err
@@ -482,7 +508,7 @@ func (b *Browser) openTab(rawURL string) (*Tab, error) {
 
 // attach connects to a tab, prepares it (screen size, audio tap) and adds it to the tab strip.
 func (b *Browser) attach(id, openerID string, opened bool) (*Tab, error) {
-	t := &Tab{id: id, opener: openerID, title: "New Tab", url: "about:blank"}
+	t := &Tab{id: id, opener: openerID, title: "New Tab", url: "about:blank", obs: newObserver(id)}
 	ctx, cancel := chromedp.NewContext(b.root, chromedp.WithTargetID(target.ID(id)), chromedp.WithListener(b.tabListener(t)))
 	t.ctx, t.cancel = ctx, cancel
 	if err := chromedp.Do(ctx); err != nil {
@@ -491,12 +517,26 @@ func (b *Browser) attach(id, openerID string, opened bool) (*Tab, error) {
 	}
 
 	b.mu.Lock()
-	v := b.view
+	v, emu := b.view, b.emu
 	b.mu.Unlock()
 	run := true
 	steps := []func() error{
+		func() error { // console and network, so the agent can see what the page does
+			bufTotal, bufRes := int64(10<<20), int64(2<<20)
+			if _, err := chromedp.Call(ctx, network.Enable, network.EnableParams{MaxTotalBufferSize: &bufTotal, MaxResourceBufferSize: &bufRes}); err != nil {
+				return err
+			}
+			if _, err := chromedp.Call(ctx, cdpruntime.Enable, cdp.Empty{}); err != nil {
+				return err
+			}
+			_, err := chromedp.Call(ctx, cdplog.Enable, cdp.Empty{})
+			return err
+		},
 		func() error {
-			_, err := chromedp.Call(ctx, emulation.SetDeviceMetricsOverride, emulation.SetDeviceMetricsOverrideParams{Width: int64(v.Width), Height: int64(v.Height), DeviceScaleFactor: 1})
+			if emu != (Emulation{}) { // tabs opened later get the same device
+				return b.applyEmulation(t, v, emu)
+			}
+			_, err := chromedp.Call(ctx, emulation.SetDeviceMetricsOverride, metrics(v, emu))
 			return err
 		},
 		func() error {
@@ -664,6 +704,10 @@ func (b *Browser) onBrowserEvent(ev any) {
 	case *target.EventTargetDestroyed:
 		id := string(e.TargetID)
 		b.enqueue(func() { b.closeTab(id) })
+	case *browser.EventDownloadWillBegin, *browser.EventDownloadProgress:
+		if done := b.dl.event(ev, b.opt.DownloadDir); done != nil {
+			go b.hub.systemChat("Downloaded " + done.Name)
+		}
 	case *target.EventTargetCrashed:
 		id := string(e.TargetID)
 		go b.hub.systemChat("A tab crashed and was reloaded")
@@ -736,6 +780,7 @@ func (b *Browser) onInfo(info *target.Info) {
 // Events of one tab. Must return fast and must not call Chrome directly.
 func (b *Browser) tabListener(t *Tab) func(ev any) {
 	return func(ev any) {
+		t.obs.event(ev)
 		switch e := ev.(type) {
 		case *page.EventScreencastFrame:
 			sid := e.SessionID
@@ -1021,12 +1066,13 @@ func (b *Browser) SetView(v View) {
 	b.enqueue(func() {
 		b.mu.Lock()
 		b.view = v
+		emu := b.emu
 		tabs := slices.Clone(b.tabs)
 		t := b.active
 		b.gotFrame = false
 		b.mu.Unlock()
 		for _, tab := range tabs {
-			chromedp.Call(tab.ctx, emulation.SetDeviceMetricsOverride, emulation.SetDeviceMetricsOverrideParams{Width: int64(v.Width), Height: int64(v.Height), DeviceScaleFactor: 1})
+			chromedp.Call(tab.ctx, emulation.SetDeviceMetricsOverride, metrics(v, emu))
 		}
 		if t != nil {
 			chromedp.Call(t.ctx, page.StopScreencast, cdp.Empty{})

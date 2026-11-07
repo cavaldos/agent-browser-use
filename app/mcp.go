@@ -37,6 +37,9 @@ Work like Playwright MCP: call browser_snapshot to get the page outline, then ac
 To react to the page (the other player's move in a game, a chat reply, a result appearing), call browser_wait_for_change: it returns as soon as the page changes, with what changed.
 Use browser_say to tell the people watching what you are doing or what you need from them (for example, to log in for you).
 You take control by yourself when you act, even from a person, and give it back after you have been idle a little while.
+After an action, the result lists new console errors and failed requests ("Page problems"). Dig deeper with browser_console_messages and browser_network_requests.
+Files: browser_downloads waits for/reads downloaded files; browser_file_upload fills file inputs (from the upload folder only).
+Logins: browser_cookies, browser_storage and browser_state (save/load a whole session by name). browser_snapshot_diff shows what changed on the page. browser_emulate switches to a phone/tablet or changes locale, dark mode, location and network speed.
 If a tool says the agent is blocked, a person clicked "Block agent": wait, or ask them (browser_say) to click "Unblock".`
 
 // ---------- JSON-RPC ----------
@@ -239,6 +242,94 @@ var tools = []tool{
 			"index":  map[string]any{"type": "number", "description": "Tab index for select/close (close defaults to the current tab)"},
 			"url":    str("URL for a new tab (optional)"),
 		}, "action")},
+	{Name: "browser_console_messages", Title: "Console messages", Annotations: readOnly,
+		Description: "Read the current tab's console: console.log/warn/error, uncaught exceptions and browser warnings (CSP, deprecations…). Use it to find out why a page misbehaves.",
+		InputSchema: schema(map[string]any{
+			"level":   map[string]any{"type": "string", "enum": []string{"error", "warning", "info", "debug", "all"}, "description": "Lowest level to show (default info; error = only errors)"},
+			"limit":   map[string]any{"type": "number", "description": "Most recent messages to show (default 100)"},
+			"clear":   map[string]any{"type": "boolean", "description": "Forget the messages after reading them"},
+			"history": map[string]any{"type": "boolean", "description": "Include messages of earlier pages (default: only the current page)"},
+		})},
+	{Name: "browser_network_requests", Title: "Network requests", Annotations: readOnly,
+		Description: "List the requests the current tab made (method, URL, status, type, time, size). Images, fonts, stylesheets and media are hidden unless includeStatic. " +
+			"Pass id (from the list) for the headers of one request, and body: true for its response body (e.g. an API's JSON).",
+		InputSchema: schema(map[string]any{
+			"filter":        str("Only URLs matching this text or regular expression, e.g. \"/api/\""),
+			"method":        str("Only this HTTP method, e.g. POST"),
+			"failedOnly":    map[string]any{"type": "boolean", "description": "Only failed requests and 4xx/5xx responses"},
+			"includeStatic": map[string]any{"type": "boolean", "description": "Also show images, fonts, stylesheets and media"},
+			"limit":         map[string]any{"type": "number", "description": "Most recent requests to show (default 60)"},
+			"id":            map[string]any{"type": "number", "description": "Show one request in detail (id from the list)"},
+			"body":          map[string]any{"type": "boolean", "description": "With id: include the response body"},
+			"clear":         map[string]any{"type": "boolean", "description": "Forget the requests after listing them"},
+			"history":       map[string]any{"type": "boolean", "description": "Include requests of earlier pages (default: only the current page)"},
+		})},
+	{Name: "browser_downloads", Title: "Downloaded files", Description: "Files the browser downloaded. action list (default) shows them with their path on the server; wait waits until a download that is under way (or about to start) finishes; read returns the text of a downloaded file (the newest unless name is given).",
+		InputSchema: schema(map[string]any{
+			"action": map[string]any{"type": "string", "enum": []string{"list", "wait", "read"}},
+			"name":   str("File name in the download folder (for read)"),
+			"time":   map[string]any{"type": "number", "description": "Seconds to wait for wait (default 30, max 120)"},
+		})},
+	{Name: "browser_file_upload", Title: "Upload files", Description: "Put files into a file input (<input type=file>) or the button/label that belongs to it. Files must be in the upload folder (or the download folder): give their names in paths, or send the content in files.",
+		InputSchema: schema(map[string]any{
+			"element": elementProp,
+			"ref":     refProp,
+			"paths":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "File names in the upload folder (or the download folder), or full paths inside them"},
+			"files": map[string]any{"type": "array", "description": "Files to create in the upload folder and upload, as base64 data",
+				"items": map[string]any{"type": "object", "properties": map[string]any{"name": str("File name"), "data": str("File content, base64")}, "required": []string{"name", "data"}}},
+		}, "element", "ref")},
+	{Name: "browser_cookies", Title: "Cookies", Description: "List, set, delete or clear cookies. list shows the cookies of the current page (all: true = every site; values are shortened unless full: true). clear removes every cookie, or those of one domain.",
+		InputSchema: schema(map[string]any{
+			"action":   map[string]any{"type": "string", "enum": []string{"list", "set", "delete", "clear"}},
+			"name":     str("Cookie name (set, delete; filter for list)"),
+			"value":    str("Cookie value (set)"),
+			"url":      str("Site the cookie belongs to (default: the current page)"),
+			"domain":   str("Cookie domain (set, delete) or the domain to clear"),
+			"path":     str("Cookie path (default /)"),
+			"secure":   map[string]any{"type": "boolean"},
+			"httpOnly": map[string]any{"type": "boolean"},
+			"sameSite": map[string]any{"type": "string", "enum": []string{"Strict", "Lax", "None"}},
+			"expires":  map[string]any{"type": "number", "description": "Expiry as Unix time in seconds (default: session cookie)"},
+			"all":      map[string]any{"type": "boolean", "description": "list: cookies of every site"},
+			"full":     map[string]any{"type": "boolean", "description": "list: do not shorten values"},
+		}, "action")},
+	{Name: "browser_storage", Title: "Web storage", Description: "Read or change localStorage / sessionStorage of the current page: list, get, set, remove or clear.",
+		InputSchema: schema(map[string]any{
+			"action": map[string]any{"type": "string", "enum": []string{"list", "get", "set", "remove", "clear"}},
+			"type":   map[string]any{"type": "string", "enum": []string{"local", "session"}, "description": "Default local"},
+			"key":    str("Key (get, set, remove)"),
+			"value":  str("Value (set)"),
+		}, "action")},
+	{Name: "browser_state", Title: "Save and restore a session", Description: "Save the browser's login state (all cookies + localStorage/sessionStorage of the current site) under a name, and load it later, even after a restart. " +
+		"Use it to keep a login, switch between accounts, or return to a known state. Saved files hold secrets: delete states you no longer need.",
+		InputSchema: schema(map[string]any{
+			"action": map[string]any{"type": "string", "enum": []string{"save", "load", "list", "delete"}},
+			"name":   str("Name of the state (letters, digits, - _ .)"),
+		}, "action")},
+	{Name: "browser_snapshot_diff", Title: "Snapshot diff", Annotations: readOnly,
+		Description: "Show only what changed on the page since an earlier snapshot: since the last one you saw (default), or since a baseline saved with save. Cheaper than reading the whole page again, and good for checking what an action did.",
+		InputSchema: schema(map[string]any{
+			"baseline": str("Name of a saved baseline to compare with (default: the last snapshot you saw)"),
+			"save":     str("Also keep the current page as a baseline under this name"),
+		})},
+	{Name: "browser_emulate", Title: "Emulate a device", Description: "Make the browser behave like another device or environment: a phone/tablet preset (screen size, pixel ratio, touch, user agent), or your own width/height/scale/mobile, plus locale, time zone, dark mode, GPS location and network speed. " +
+		"Applies to all tabs; the page reloads when the device changes. device \"reset\" goes back to desktop; call with no arguments to see the current settings and the device list.",
+		InputSchema: schema(map[string]any{
+			"device":      str("Preset: iPhone 15, iPhone SE, iPad, Pixel 8, Galaxy S23, Galaxy Tab S9, Laptop, Desktop HD, or reset"),
+			"width":       map[string]any{"type": "number", "description": "Screen width in CSS pixels (200-2560)"},
+			"height":      map[string]any{"type": "number", "description": "Screen height in CSS pixels (200-2560)"},
+			"scale":       map[string]any{"type": "number", "description": "Device pixel ratio, e.g. 2 or 3"},
+			"mobile":      map[string]any{"type": "boolean", "description": "Mobile browser behavior (meta viewport, overlay scrollbars) and touch"},
+			"touch":       map[string]any{"type": "boolean"},
+			"userAgent":   str("User agent string"),
+			"locale":      str("Language, e.g. vi-VN or en-US"),
+			"timezone":    str("Time zone, e.g. Asia/Ho_Chi_Minh"),
+			"colorScheme": map[string]any{"type": "string", "enum": []string{"light", "dark", "no-preference"}},
+			"latitude":    map[string]any{"type": "number"},
+			"longitude":   map[string]any{"type": "number"},
+			"accuracy":    map[string]any{"type": "number", "description": "Location accuracy in meters (default 100)"},
+			"network":     map[string]any{"type": "string", "enum": []string{"online", "offline", "slow-3g", "fast-3g", "4g"}},
+		})},
 	{Name: "browser_say", Title: "Tell the people watching", Annotations: readOnly,
 		Description: "Show a short message to the people watching the browser (a caption on the screen and a line in the room chat). Use it to explain your plan or to ask them for help, e.g. to log in or solve a captcha.",
 		InputSchema: schema(map[string]any{"message": str("What to tell them")}, "message")},
@@ -268,6 +359,45 @@ type toolArgs struct {
 	Index        *float64 `json:"index"`
 	Message      string   `json:"message"`
 	Selector     string   `json:"selector"`
+
+	Level         string       `json:"level"`
+	Limit         float64      `json:"limit"`
+	Filter        string       `json:"filter"`
+	Method        string       `json:"method"`
+	FailedOnly    bool         `json:"failedOnly"`
+	IncludeStatic bool         `json:"includeStatic"`
+	ID            float64      `json:"id"`
+	Body          bool         `json:"body"`
+	History       bool         `json:"history"`
+	Name          string       `json:"name"`
+	Paths         []string     `json:"paths"`
+	Files         []UploadFile `json:"files"`
+	Value         string       `json:"value"`
+	Domain        string       `json:"domain"`
+	Path          string       `json:"path"`
+	Secure        *bool        `json:"secure"`
+	HTTPOnly      *bool        `json:"httpOnly"`
+	SameSite      string       `json:"sameSite"`
+	Expires       float64      `json:"expires"`
+	All           bool         `json:"all"`
+	Full          bool         `json:"full"`
+	Type          string       `json:"type"`
+	Baseline      string       `json:"baseline"`
+	Save          string       `json:"save"`
+	Device        string       `json:"device"`
+	Width         *int         `json:"width"`
+	Height        *int         `json:"height"`
+	Scale         *float64     `json:"scale"`
+	Mobile        *bool        `json:"mobile"`
+	Touch         *bool        `json:"touch"`
+	UserAgent     *string      `json:"userAgent"`
+	Locale        *string      `json:"locale"`
+	Timezone      *string      `json:"timezone"`
+	ColorScheme   *string      `json:"colorScheme"`
+	Latitude      *float64     `json:"latitude"`
+	Longitude     *float64     `json:"longitude"`
+	Accuracy      *float64     `json:"accuracy"`
+	Network       *string      `json:"network"`
 }
 
 func (s *MCPServer) callTool(name string, raw json.RawMessage) toolResult {
@@ -300,7 +430,17 @@ func (s *MCPServer) callTool(name string, raw json.RawMessage) toolResult {
 		if note != "" {
 			out += note + "\n"
 		}
+		if problems := a.Alerts(); problems != "" {
+			out += "\n" + problems
+		}
 		return textResult(out + "\n" + snap)
+	}
+
+	switch name { // leaving the page: its old problems are not news for the next one
+	case "browser_navigate", "browser_navigate_back", "browser_navigate_forward", "browser_reload":
+		if o := a.activeObs(); o != nil {
+			o.markSeen()
+		}
 	}
 
 	switch name {
@@ -372,6 +512,68 @@ func (s *MCPServer) callTool(name string, raw json.RawMessage) toolResult {
 			return textResult(out)
 		}
 		return withSnapshot("Done", "", nil)
+	case "browser_console_messages":
+		out, err := a.Console(args.Level, int(args.Limit), args.Clear != nil && *args.Clear, args.History)
+		if err != nil {
+			return errorResult(err)
+		}
+		return textResult(out)
+	case "browser_network_requests":
+		out, err := a.Network(netFilter{Match: args.Filter, Method: args.Method, FailedOnly: args.FailedOnly, Static: args.IncludeStatic, History: args.History, Limit: int(args.Limit)},
+			int(args.ID), args.Body, args.Clear != nil && *args.Clear)
+		if err != nil {
+			return errorResult(err)
+		}
+		return textResult(out)
+	case "browser_downloads":
+		out, err := a.Downloads(args.Action, args.Name, args.Time)
+		if err != nil {
+			return errorResult(err)
+		}
+		return textResult(out)
+	case "browser_file_upload":
+		out, err := a.Upload(args.Ref, args.Element, args.Paths, args.Files)
+		if err != nil {
+			return errorResult(err)
+		}
+		return withSnapshot(out, "", nil)
+	case "browser_cookies":
+		out, err := a.Cookies(CookieArgs{Action: args.Action, URL: args.URL, Name: args.Name, Value: args.Value, Domain: args.Domain, Path: args.Path,
+			SameSite: args.SameSite, Secure: args.Secure, HTTPOnly: args.HTTPOnly, Expires: args.Expires, All: args.All, Full: args.Full})
+		if err != nil {
+			return errorResult(err)
+		}
+		return textResult(out)
+	case "browser_storage":
+		out, err := a.Storage(args.Action, args.Type, args.Key, args.Value)
+		if err != nil {
+			return errorResult(err)
+		}
+		return textResult(out)
+	case "browser_state":
+		out, err := a.State(args.Action, args.Name)
+		if err != nil {
+			return errorResult(err)
+		}
+		return textResult(out)
+	case "browser_snapshot_diff":
+		out, err := a.SnapshotDiff(args.Baseline, args.Save)
+		if err != nil {
+			return errorResult(err)
+		}
+		return textResult(out)
+	case "browser_emulate":
+		opts := EmulateOpts{Device: args.Device, Width: args.Width, Height: args.Height, Scale: args.Scale, Mobile: args.Mobile, Touch: args.Touch,
+			UserAgent: args.UserAgent, Locale: args.Locale, Timezone: args.Timezone, ColorScheme: args.ColorScheme,
+			Lat: args.Latitude, Lon: args.Longitude, Accuracy: args.Accuracy, Network: args.Network}
+		out, err := a.Emulate(opts)
+		if err != nil {
+			return errorResult(err)
+		}
+		if opts.empty() || strings.EqualFold(opts.Device, "list") { // just asking
+			return textResult(out)
+		}
+		return withSnapshot("Emulation updated", out, nil)
 	case "browser_say":
 		if strings.TrimSpace(args.Message) == "" {
 			return errorResult(errors.New("message is required"))

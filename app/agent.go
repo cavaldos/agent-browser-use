@@ -49,7 +49,9 @@ type Agent struct {
 	x, y   float64    // cursor position, 0..1 of the screen
 	opened bool       // viewer already opened once
 
-	last, lastKey string // the outline the model saw last, and which tab/URL it was for
+	last, lastKey string          // the outline the model saw last, and which tab/URL it was for
+	marks         map[string]mark // named baselines for browser_snapshot_diff
+	dlSeen        int             // downloads the agent has been told about
 }
 
 func newAgent(h *Hub, b *Browser, opt AgentOptions) *Agent {
@@ -1078,7 +1080,7 @@ func (a *Agent) snapshot(diff bool) (string, error) {
 	prev, prevKey := a.last, a.lastKey
 	a.last, a.lastKey = snap, key
 	if diff && prev != "" && key == prevKey {
-		if d, ok := diffOutline(prev, snap); ok {
+		if d, ok := diffOutline(prev, snap, false); ok {
 			s.WriteString(d)
 			return s.String(), nil
 		}
@@ -1090,8 +1092,8 @@ func (a *Agent) snapshot(diff bool) (string, error) {
 }
 
 // diffOutline lists what changed between two page outlines, with a little context around each change.
-// ok is false when so much changed that the full outline is clearer.
-func diffOutline(prev, cur string) (string, bool) {
+// ok is false when so much changed that the full outline is clearer (unless force: an explicit diff is always shown).
+func diffOutline(prev, cur string, force bool) (string, bool) {
 	ops, ok := diffLines(strings.Split(prev, "\n"), strings.Split(cur, "\n"))
 	if !ok {
 		return "", false
@@ -1111,7 +1113,7 @@ func diffOutline(prev, cur string) (string, bool) {
 		return "### Page snapshot\nNothing changed on the page since the last snapshot.\n", true
 	}
 	var s strings.Builder
-	s.WriteString("### Page changes\nOnly what changed since the last snapshot (+ added, - removed, the rest is context). " +
+	s.WriteString("### Page changes\nOnly what changed since the earlier snapshot (+ added, - removed, the rest is context). " +
 		"Refs from earlier snapshots still work; call browser_snapshot for the whole page.\n```diff\n")
 	gap := false
 	for i, o := range ops {
@@ -1132,7 +1134,7 @@ func diffOutline(prev, cur string) (string, bool) {
 		s.WriteString("  …\n")
 	}
 	s.WriteString("```\n")
-	if s.Len() > len(cur)*2/3 {
+	if !force && s.Len() > len(cur)*2/3 {
 		return "", false
 	}
 	return s.String(), true

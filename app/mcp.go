@@ -39,7 +39,7 @@ Use browser_say to tell the people watching what you are doing or what you need 
 You take control by yourself when you act, even from a person, and give it back after you have been idle a little while.
 After an action, the result lists new console errors and failed requests ("Page problems"). Dig deeper with browser_console_messages and browser_network_requests.
 Files: browser_downloads waits for/reads downloaded files; browser_file_upload fills file inputs (from the upload folder only).
-Logins: browser_cookies, browser_storage and browser_state (save/load a whole session by name). browser_snapshot_diff shows what changed on the page. browser_emulate switches to a phone/tablet or changes locale, dark mode, location and network speed.
+Logins: browser_cookies, browser_storage and browser_state (save/load a whole session by name, or export/import sessions as a JSON file to move them between machines). browser_snapshot_diff shows what changed on the page. browser_emulate switches to a phone/tablet or changes locale, dark mode, location and network speed.
 If a tool says the agent is blocked, a person clicked "Block agent": wait, or ask them (browser_say) to click "Unblock".`
 
 // ---------- JSON-RPC ----------
@@ -301,10 +301,12 @@ var tools = []tool{
 			"value":  str("Value (set)"),
 		}, "action")},
 	{Name: "browser_state", Title: "Save and restore a session", Description: "Save the browser's login state (all cookies + localStorage/sessionStorage of the current site) under a name, and load it later, even after a restart. " +
-		"Use it to keep a login, switch between accounts, or return to a known state. Saved files hold secrets: delete states you no longer need.",
+		"Use it to keep a login, switch between accounts, or return to a known state. export writes one state (or all of them, if no name) to a single JSON file you can carry to another machine; import reads such a file back so the sessions can be loaded there without logging in again. " +
+		"Saved and exported files hold secrets: delete states you no longer need.",
 		InputSchema: schema(map[string]any{
-			"action": map[string]any{"type": "string", "enum": []string{"save", "load", "list", "delete"}},
+			"action": map[string]any{"type": "string", "enum": []string{"save", "load", "list", "delete", "export", "import"}},
 			"name":   str("Name of the state (letters, digits, - _ .)"),
+			"path":   str("File path for export (output; default: a timestamped file in the downloads folder) or import (the JSON file to read)"),
 		}, "action")},
 	{Name: "browser_snapshot_diff", Title: "Snapshot diff", Annotations: readOnly,
 		Description: "Show only what changed on the page since an earlier snapshot: since the last one you saw (default), or since a baseline saved with save. Cheaper than reading the whole page again, and good for checking what an action did.",
@@ -551,7 +553,7 @@ func (s *MCPServer) callTool(name string, raw json.RawMessage) toolResult {
 		}
 		return textResult(out)
 	case "browser_state":
-		out, err := a.State(args.Action, args.Name)
+		out, err := a.State(args.Action, args.Name, args.Path)
 		if err != nil {
 			return errorResult(err)
 		}

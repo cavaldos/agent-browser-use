@@ -507,8 +507,17 @@ const dumpStorageJS = `JSON.stringify({origin: location.origin,
   local: Object.fromEntries(Object.keys(localStorage).map(k => [k, localStorage.getItem(k)])),
   session: Object.fromEntries(Object.keys(sessionStorage).map(k => [k, sessionStorage.getItem(k)]))})`
 
+// stateBundle is the portable file produced by export and read by import: one or more saved
+// states, so a whole set of logins can be carried to another machine in a single JSON file.
+type stateBundle struct {
+	Version  int                   `json:"version"`
+	App      string                `json:"app"`
+	Exported time.Time             `json:"exported"`
+	States   map[string]savedState `json:"states"`
+}
+
 // State saves or restores the whole login state (cookies + storage of the current site) under a name.
-func (a *Agent) State(action, name string) (string, error) {
+func (a *Agent) State(action, name, path string) (string, error) {
 	if action == "" || action == "list" {
 		ents, _ := os.ReadDir(a.b.opt.StateDir)
 		var s strings.Builder
@@ -528,6 +537,12 @@ func (a *Agent) State(action, name string) (string, error) {
 			s.WriteString("None. Save one with action save and a name.\n")
 		}
 		return s.String(), nil
+	}
+	switch action {
+	case "export":
+		return a.exportStates(name, path)
+	case "import":
+		return a.importStates(path)
 	}
 	path, err := a.statePath(name)
 	if err != nil {
@@ -618,7 +633,156 @@ func (a *Agent) State(action, name string) (string, error) {
 		}
 		return "Deleted state " + name + ".", nil
 	}
-	return "", fmt.Errorf("action must be save, load, list or delete, not %q", action)
+	return "", fmt.Errorf("action must be save, load, list, delete, export or import, not %q", action)
+}
+
+type stateInfo struct {
+	Name    string    `json:"name"`
+	Cookies int       `json:"cookies"`
+	Origin  string    `json:"origin"`
+	Saved   time.Time `json:"saved"`
+}
+
+// listStates returns metadata for every saved state, for the settings UI.
+func (a *Agent) listStates() []stateInfo {
+	var out []stateInfo
+	ents, _ := os.ReadDir(a.b.opt.StateDir)
+	for _, e := range ents {
+		n := strings.TrimSuffix(e.Name(), ".json")
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || !nameRe.MatchString(n) {
+			continue
+		}
+		if st, err := a.readState(n); err == nil {
+			out = append(out, stateInfo{Name: n, Cookies: len(st.Cookies), Origin: st.Origin, Saved: st.Saved})
+		}
+	}
+	slices.SortFunc(out, func(x, y stateInfo) int { return strings.Compare(x.Name, y.Name) })
+	return out
+}
+
+// readState reads and parses one saved state file by name.
+func (a *Agent) readState(name string) (savedState, error) {
+	var st savedState
+	p, err := a.statePath(name)
+	if err != nil {
+		return st, err
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return st, fmt.Errorf("no saved state called %q", name)
+	}
+	if err := json.Unmarshal(data, &st); err != nil {
+		return st, fmt.Errorf("state %q is damaged: %v", name, err)
+	}
+	return st, nil
+}
+
+// exportStates bundles one saved state (name given) or every saved state (name empty) into a single
+// JSON file that can be copied to another machine and read back with import. If path is empty the
+// file is written into the downloads folder.
+// buildBundle gathers one saved state (name given) or every saved state (name empty) into a bundle.
+func (a *Agent) buildBundle(name string) (stateBundle, error) {
+	bundle := stateBundle{Version: 1, App: appName, Exported: time.Now(), States: map[string]savedState{}}
+	if name != "" {
+		st, err := a.readState(name)
+		if err != nil {
+			return bundle, err
+		}
+		bundle.States[name] = st
+		return bundle, nil
+	}
+	ents, _ := os.ReadDir(a.b.opt.StateDir)
+	for _, e := range ents {
+		n := strings.TrimSuffix(e.Name(), ".json")
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || !nameRe.MatchString(n) {
+			continue
+		}
+		if st, err := a.readState(n); err == nil {
+			bundle.States[n] = st
+		}
+	}
+	if len(bundle.States) == 0 {
+		return bundle, errors.New("no saved states to export (save one first)")
+	}
+	return bundle, nil
+}
+
+// saveBundle parses an export file's bytes and writes every usable state into the states folder,
+// returning the names it imported. Also accepts a single bare saved-state file.
+func (a *Agent) saveBundle(data []byte, fallbackName string) ([]string, error) {
+	var bundle stateBundle
+	if err := json.Unmarshal(data, &bundle); err != nil || bundle.States == nil {
+		var one savedState
+		if json.Unmarshal(data, &one) == nil && (len(one.Cookies) > 0 || len(one.Local) > 0) {
+			name := fallbackName
+			if !nameRe.MatchString(name) {
+				name = "imported"
+			}
+			bundle = stateBundle{States: map[string]savedState{name: one}}
+		} else {
+			return nil, errors.New("not a valid export file")
+		}
+	}
+	var names []string
+	for name, st := range bundle.States {
+		if !nameRe.MatchString(name) {
+			continue
+		}
+		p, err := a.statePath(name)
+		if err != nil {
+			continue
+		}
+		out, _ := json.MarshalIndent(st, "", "  ")
+		if os.WriteFile(p, out, 0o600) == nil {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return nil, errors.New("nothing imported: the file held no usable states")
+	}
+	slices.Sort(names)
+	return names, nil
+}
+
+// exportStates bundles one saved state (name given) or every saved state (name empty) into a single
+// JSON file that can be copied to another machine and read back with import. If path is empty the
+// file is written into the downloads folder.
+func (a *Agent) exportStates(name, path string) (string, error) {
+	bundle, err := a.buildBundle(name)
+	if err != nil {
+		return "", err
+	}
+	if path == "" {
+		fname := "states-export-" + time.Now().Format("20060102-150405") + ".json"
+		path = filepath.Join(cmpOr(a.b.opt.DownloadDir, a.b.opt.StateDir), fname)
+	} else if !strings.HasSuffix(path, ".json") {
+		path += ".json"
+	}
+	data, _ := json.MarshalIndent(bundle, "", "  ")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return "", err
+	}
+	abs, _ := filepath.Abs(path)
+	a.announce("📤", fmt.Sprintf("Export %d session(s)", len(bundle.States)), nil)
+	return fmt.Sprintf("Exported %d session(s) to %s. Copy this file to the other machine and run action import with its path there; the secrets inside let anyone log in as you, so keep it safe and delete it when done.", len(bundle.States), abs), nil
+}
+
+// importStates reads a bundle written by export and saves every state inside it into the states
+// folder, ready to be restored with action load.
+func (a *Agent) importStates(path string) (string, error) {
+	if path == "" {
+		return "", errors.New("path is required: the JSON file produced by action export")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("cannot read %q: %v", path, err)
+	}
+	names, err := a.saveBundle(data, strings.TrimSuffix(filepath.Base(path), ".json"))
+	if err != nil {
+		return "", err
+	}
+	a.announce("📥", fmt.Sprintf("Import %d session(s)", len(names)), nil)
+	return fmt.Sprintf("Imported %d session(s): %s. Load one with action load and its name to sign in without logging in again.", len(names), strings.Join(names, ", ")), nil
 }
 
 // ---------- Snapshot diff ----------

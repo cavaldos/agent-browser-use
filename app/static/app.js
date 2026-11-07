@@ -48,6 +48,10 @@ const ICONS = {
   copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   chat: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
   settings: '<path d="M20 7h-9M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>',
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>',
+  trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  key: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/>',
 };
 function svg(name, cls = "") {
   return `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
@@ -787,6 +791,7 @@ function showPane(p) {
   $$(".side-tab").forEach((b) => b.classList.toggle("active", b.dataset.pane === p));
   $("#chatPane").hidden = p !== "chat";
   $("#settingsPane").hidden = p !== "settings";
+  if (p === "settings") renderStates();
   if (p === "chat") { setUnread(0); scrollChat(true); }
 }
 const chatVisible = () => sidebarOpen() && pane === "chat";
@@ -876,6 +881,90 @@ $("#qualSelect").onchange = (e) => sendView({ quality: +e.target.value });
 $("#scrollSpeed").oninput = (e) => { prefs.scroll = +e.target.value; save("scroll", prefs.scroll); renderSettings(); };
 $("#optCursors").onchange = (e) => { prefs.cursors = e.target.checked; save("cursors", prefs.cursors ? "on" : "off"); if (!prefs.cursors) $("#cursors").innerHTML = ""; };
 $("#optEmotes").onchange = (e) => { prefs.emotes = e.target.checked; save("emotes", prefs.emotes ? "on" : "off"); };
+
+// ---- Saved logins (export / import of cookies + sessions) ----
+async function renderStates() {
+  const box = $("#stateList");
+  if (!box) return;
+  let states = [];
+  try {
+    const r = await fetch("/api/states");
+    if (r.ok) states = (await r.json()).states || [];
+  } catch { /* server may not be up */ }
+  box.replaceChildren();
+  if (!states.length) {
+    const p = document.createElement("p");
+    p.className = "text-xs text-zinc-500";
+    p.textContent = "No saved logins yet. The agent saves one with browser_state after you log in.";
+    box.appendChild(p);
+    return;
+  }
+  for (const s of states) {
+    const row = document.createElement("div");
+    row.className = "flex items-center gap-2 rounded-xl border border-white/[.06] bg-white/[.02] p-2.5";
+    const info = document.createElement("div");
+    info.className = "min-w-0 flex-1";
+    info.innerHTML = `<p class="truncate text-[13px] font-medium">${esc(s.name)}</p><p class="truncate text-xs text-zinc-500">${s.cookies} cookies · ${esc(s.origin || "—")}</p>`;
+    row.appendChild(info);
+    row.appendChild(stateBtn("key", "Load into the browser", () => loadState(s.name)));
+    row.appendChild(stateBtn("download", "Export this login", () => { location.href = "/api/states/export?name=" + encodeURIComponent(s.name); }));
+    row.appendChild(stateBtn("trash", "Delete", () => deleteState(s.name)));
+    box.appendChild(row);
+  }
+}
+function stateBtn(icon, title, onclick) {
+  const b = document.createElement("button");
+  b.className = "icon-btn h-7 w-7 shrink-0";
+  b.title = title;
+  b.innerHTML = svg(icon, "h-3.5 w-3.5");
+  b.onclick = onclick;
+  return b;
+}
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+async function loadState(name) {
+  try {
+    const r = await fetch("/api/states/load", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+    if (!r.ok) throw new Error(await r.text());
+    toast(`Loaded “${name}” — you’re signed in`, "key");
+  } catch (e) { toast(`Couldn’t load: ${String(e.message || e).trim()}`, "info"); }
+}
+async function deleteState(name) {
+  if (!confirm(`Delete saved login “${name}”? This cannot be undone.`)) return;
+  try {
+    const r = await fetch("/api/states/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+    if (!r.ok) throw new Error(await r.text());
+    toast(`Deleted “${name}”`, "trash");
+    renderStates();
+  } catch (e) { toast(`Couldn’t delete: ${String(e.message || e).trim()}`, "info"); }
+}
+$("#saveStateForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const name = $("#saveStateName").value.trim();
+  if (!name) return;
+  try {
+    const r = await fetch("/api/states/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+    if (!r.ok) throw new Error(await r.text());
+    $("#saveStateName").value = "";
+    toast(`Saved “${name}”`, "key");
+    renderStates();
+  } catch (err) { toast(`Couldn’t save: ${String(err.message || err).trim()}`, "info"); }
+};
+$("#exportAllBtn").onclick = () => { location.href = "/api/states/export"; };
+$("#importBtn").onclick = () => $("#importFile").click();
+$("#importFile").onchange = async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  const fd = new FormData();
+  fd.append("file", file);
+  try {
+    const r = await fetch("/api/states/import", { method: "POST", body: fd });
+    if (!r.ok) throw new Error(await r.text());
+    const got = (await r.json()).imported || [];
+    toast(`Imported ${got.length} login(s)`, "upload");
+    renderStates();
+  } catch (err) { toast(`Import failed: ${String(err.message || err).trim()}`, "info"); }
+};
 
 // Popovers: one open at a time, a click anywhere else closes them.
 const POPS = ["#helpPop", "#emotePop", "#membersPop"];

@@ -590,6 +590,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 	mux.HandleFunc("/ws", h.serveWS)
+	registerStateAPI(mux, mcp)
 	if !*noMCP {
 		mux.HandleFunc("/mcp", mcp.ServeHTTP(*mcpRemote))
 	}

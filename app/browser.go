@@ -250,8 +250,15 @@ func chromeFlags(opt BrowserOptions) []chromedp.ExecAllocatorOption {
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("renderer-process-limit", "4"),
 		chromedp.Flag("disable-site-isolation-trials", true),
-		chromedp.Flag("disable-features", "Translate,BlinkGenPropertyTrees,SpareRendererForSitePerProcess,OptimizationHints,MediaRouter,DialMediaRouteProvider,IsolateOrigins,site-per-process"),
+		chromedp.Flag("disable-features", "Translate,BlinkGenPropertyTrees,SpareRendererForSitePerProcess,OptimizationHints,MediaRouter,DialMediaRouteProvider,IsolateOrigins,site-per-process,ChromeWhatsNewUI"),
 		chromedp.Flag("disable-component-update", true),
+		// Stop Chrome from phoning home: its update check opens an "About Chrome"
+		// (chrome://settings/help) tab on its own. These also silence the default-browser
+		// and first-run nags, and the "restore last session" bubble.
+		chromedp.Flag("disable-background-networking", true),
+		chromedp.Flag("no-default-browser-check", true),
+		chromedp.Flag("disable-session-crashed-bubble", true),
+		chromedp.Flag("hide-crash-restore-bubble", true),
 		chromedp.Flag("js-flags", "--max-old-space-size=512"),
 		chromedp.WindowSize(opt.Width, opt.Height),
 	)
@@ -771,10 +778,24 @@ func (b *Browser) onInfo(info *target.Info) {
 	changed := t.title != info.Title || t.url != info.URL
 	t.title, t.url = info.Title, info.URL
 	b.mu.Unlock()
+	if b.dropUnwanted(info.URL, string(info.TargetID)) {
+		return
+	}
 	if changed {
 		b.notify()
 		go b.refreshNav(t)
 	}
+}
+
+// dropUnwanted closes a tab that Chrome opened on its own to an internal settings page — its
+// auto-update "About Chrome" page (chrome://settings/help). The app never opens settings itself,
+// so any such tab is unwanted; closing it stops the browser from "jumping to Settings".
+func (b *Browser) dropUnwanted(url, id string) bool {
+	if !strings.HasPrefix(url, "chrome://settings") {
+		return false
+	}
+	b.enqueue(func() { b.closeTab(id) })
+	return true
 }
 
 // Events of one tab. Must return fast and must not call Chrome directly.
@@ -808,6 +829,9 @@ func (b *Browser) tabListener(t *Tab) func(ev any) {
 
 		case *page.EventFrameNavigated:
 			if e.Frame.ParentID != "" {
+				return
+			}
+			if b.dropUnwanted(e.Frame.URL, t.id) {
 				return
 			}
 			b.mu.Lock()

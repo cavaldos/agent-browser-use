@@ -718,6 +718,9 @@ func (a *Agent) Hover(ref, element string) error {
 }
 
 func (a *Agent) Type(ref, element, text string, submit, clear bool) error {
+	if ref == "" {
+		return a.typeFocused(element, text, submit, clear)
+	}
 	bx, err := a.locate(ref)
 	if err != nil {
 		return err
@@ -745,6 +748,57 @@ func (a *Agent) Type(ref, element, text string, submit, clear bool) error {
 	}
 	if clear && hadText {
 		a.pause(120 * time.Millisecond)
+		if err := a.pressKey(keyNames["backspace"], 0); err != nil {
+			return err
+		}
+	}
+	if err := a.typeText(text); err != nil {
+		return err
+	}
+	if submit {
+		a.pause(200 * time.Millisecond)
+		if err := a.pressKey(keyNames["enter"], 0); err != nil {
+			return err
+		}
+	}
+	a.settle(8 * time.Second)
+	return nil
+}
+
+// selectFocusedJS selects the content of the focused field so typing replaces it; says whether it had any.
+const selectFocusedJS = `(() => {
+  const el = document.activeElement;
+  if (!el || el === document.body) return false;
+  if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
+    try { el.select(); } catch (e) { return false; }
+    return el.value !== "";
+  }
+  if (el.isContentEditable) {
+    const r = document.createRange(); r.selectNodeContents(el);
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    return el.textContent !== "";
+  }
+  return false;
+})()`
+
+// typeFocused types into whatever has focus (after Tab, or a field the snapshot has no ref for).
+func (a *Agent) typeFocused(element, text string, submit, clear bool) error {
+	shown := text
+	if hasPassword(element) {
+		shown = strings.Repeat("•", min(utf8.RuneCountInString(text), 12))
+	}
+	a.announce("⌨️", "Type "+quote(shown)+" into "+cmpOr(element, "the focused field"), nil)
+	hadText := false
+	if clear {
+		if err := a.act(func(t *Tab) error {
+			var err error
+			hadText, err = evalJS[bool](t, selectFocusedJS)
+			return err
+		}); err != nil {
+			return err
+		}
+	}
+	if hadText {
 		if err := a.pressKey(keyNames["backspace"], 0); err != nil {
 			return err
 		}

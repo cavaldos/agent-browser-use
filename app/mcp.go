@@ -182,15 +182,15 @@ var tools = []tool{
 		}, "element", "ref")},
 	{Name: "browser_hover", Title: "Hover", Description: "Move the mouse over an element (opens hover menus, tooltips…).",
 		InputSchema: schema(map[string]any{"element": elementProp, "ref": refProp}, "element", "ref")},
-	{Name: "browser_type", Title: "Type text", Description: "Click a text field and type into it, key by key. Replaces the current content unless clear is false.",
+	{Name: "browser_type", Title: "Type text", Description: "Type a whole piece of text in one call (never press letters one by one with browser_press_key). With ref: clicks that field first. Without ref: types into the field that has focus (e.g. after pressing Tab). Replaces the current content unless clear is false.",
 		InputSchema: schema(map[string]any{
 			"element": elementProp,
 			"ref":     refProp,
 			"text":    str("Text to type"),
 			"submit":  map[string]any{"type": "boolean", "description": "Press Enter afterwards"},
 			"clear":   map[string]any{"type": "boolean", "description": "Replace the field's content (default true). false appends at the end"},
-		}, "element", "ref", "text")},
-	{Name: "browser_press_key", Title: "Press a key", Description: "Press a key or shortcut on the focused element, e.g. \"Enter\", \"Escape\", \"ArrowDown\", \"Tab\", \"a\", \"Control+A\", \"Shift+Tab\".",
+		}, "text")},
+	{Name: "browser_press_key", Title: "Press a key", Description: "Press a key or shortcut on the focused element, e.g. \"Enter\", \"Escape\", \"ArrowDown\", \"Tab\", \"Control+A\", \"Shift+Tab\". To enter text, use browser_type (it works without a ref on the focused field), not one key per letter.",
 		InputSchema: schema(map[string]any{"key": str("Key name or combination, e.g. Enter, ArrowLeft, Control+A")}, "key")},
 	{Name: "browser_select_option", Title: "Select option", Description: "Select one or more options in a <select> drop-down.",
 		InputSchema: schema(map[string]any{
@@ -467,7 +467,7 @@ func (s *MCPServer) callTool(name string, raw json.RawMessage) toolResult {
 		return withSnapshot("Hovered "+cmpOr(args.Element, args.Ref), "", a.Hover(args.Ref, args.Element))
 	case "browser_type":
 		clear := args.Clear == nil || *args.Clear
-		return withSnapshot("Typed into "+cmpOr(args.Element, args.Ref), "", a.Type(args.Ref, args.Element, args.Text, args.Submit, clear))
+		return withSnapshot("Typed into "+cmpOr(args.Element, cmpOr(args.Ref, "the focused field")), "", a.Type(args.Ref, args.Element, args.Text, args.Submit, clear))
 	case "browser_press_key":
 		return withSnapshot("Pressed "+args.Key, "", a.PressKey(args.Key))
 	case "browser_select_option":

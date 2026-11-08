@@ -713,7 +713,12 @@ func readLines(r io.Reader, f func([]byte)) {
 // probeMCP reports whether an agent-browser-use server already answers at u.
 func probeMCP(u string) bool {
 	c := http.Client{Timeout: 2 * time.Second}
-	resp, err := c.Post(u, "application/json", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"ping"}`))
+	req, _ := http.NewRequest(http.MethodPost, u, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"ping"}`))
+	req.Header.Set("Content-Type", "application/json")
+	if authPassword != "" {
+		req.Header.Set("Authorization", "Bearer "+authPassword)
+	}
+	resp, err := c.Do(req)
 	if err != nil {
 		return false
 	}
@@ -731,6 +736,9 @@ func proxyStdio(u string) {
 		req, _ := http.NewRequest(http.MethodPost, u, bytes.NewReader(line))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json, text/event-stream")
+		if authPassword != "" {
+			req.Header.Set("Authorization", "Bearer "+authPassword)
+		}
 		resp, err := c.Do(req)
 		var out []byte
 		if err != nil {

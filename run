@@ -1,0 +1,3 @@
+#!/bin/sh
+# Run from source with any flags: ./run -p 8080 -pw secret
+exec "$(dirname "$0")/scripts/run.sh" "$@"

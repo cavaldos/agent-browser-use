@@ -142,19 +142,36 @@ See [docs/GUIDE.md](docs/GUIDE.md) for the full tool reference, options, the sha
 ## Options
 
 ```sh
-make run ARGS="-port 8080"            # another port (then use http://localhost:8080/mcp)
-make run ARGS="-agent-speed 1"        # slow the agent's cursor and typing so people can follow
-make run ARGS="-mcp-remote"           # allow other machines on your LAN to call /mcp
-make run ARGS="-no-mcp"               # disable /mcp, use only as a shared browser room
+./run -p 8080 -pw mysecret            # run from source with any flags (make can't take -p itself)
+make run p=8080                       # another port (then use http://localhost:8080/mcp)
+make run pw=mysecret                  # require a password for the web UI and /mcp
+make run engine=brave                 # pick the browser: chromium, chrome, edge, brave, vivaldi, headless-shell
+make run -- -p 8080 -pw mysecret      # or pass any app flags after --
+make run -- -agent-speed 1            # slow the agent's cursor and typing so people can follow
+make run -- -mcp-remote               # allow other machines on your LAN to call /mcp
+make run -- -no-mcp                   # disable /mcp, use only as a shared browser room
 ./bin/agent-browser-use -h            # all options
 ```
+
+**Browser engine.** By default it uses Chromium (`brew install --cask chromium` on macOS),
+or the first other Chromium-based browser it finds (Chrome, Edge, Brave, Vivaldi). `headless-shell`
+(`npx @puppeteer/browsers install chrome-headless-shell@stable`) is the lightest choice.
+Each engine gets its own profile folder (e.g. `chrome-profile-brave`). Firefox and Safari
+are not supported: the shared screen needs the Chrome DevTools Protocol.
+
+**Password.** With `-pw`, people get a login page; MCP clients send
+`Authorization: Bearer <password>` (e.g. `claude mcp add --transport http browser http://localhost:3000/mcp --header "Authorization: Bearer mysecret"`).
+
+**Freezes.** If a page stops responding for about 15 seconds, its tab is reloaded (or closed
+if it froze again within 2 minutes). If the browser itself crashes or freezes, it is restarted
+with the same profile, so logins stay and the server keeps running.
 
 ## Security
 
 - Uploads only read from the upload folder (and the download folder), never from other places on the machine. Saved sessions (`states/`) contain cookies: treat them like passwords.
 - The shared browser keeps the cookies of every account you log into. The agent can read any open page and run JavaScript in it, so only log into accounts you are happy for the agent to use.
 - By default `/mcp` only accepts connections from the local machine, and it rejects requests from other websites.
-- Anyone who can reach port 3000 can open the viewer and drive the browser. Keep it on a trusted network.
+- Without `-pw`, anyone who can reach port 3000 can open the viewer and drive the browser. Keep it on a trusted network, or set a password.
 
 ## Project layout
 

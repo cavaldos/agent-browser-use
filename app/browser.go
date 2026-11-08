@@ -46,6 +46,7 @@ type BrowserOptions struct {
 	StartURL      string
 	Profile       string // Chrome user data dir (cookies, logins…)
 	ChromePath    string // empty = auto-detect
+	Engine        Engine // resolved from -engine / -chrome
 	Audio         bool
 	MaxTabs       int
 	DownloadDir   string // where Chrome saves downloads (also readable by browser_file_upload)
@@ -92,8 +93,11 @@ type TabInfo struct {
 }
 
 type Browser struct {
-	root        context.Context // owns the Chrome process; canceled only by Close
+	root        context.Context // owns the Chrome process; replaced by restart, guarded by mu
 	cancelAlloc context.CancelFunc
+	rmu         sync.Mutex           // held while Chrome restarts
+	closed      bool                 // Close was called: never restart again
+	recovered   map[string]time.Time // URL -> when a hung tab on it was last reopened
 	hub         *Hub
 	opt         BrowserOptions
 
@@ -240,7 +244,6 @@ const metaJS = `(() => {
 
 func chromeFlags(opt BrowserOptions) []chromedp.ExecAllocatorOption {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", "new"),
 		chromedp.Flag("enable-automation", false),
 		chromedp.Flag("disable-blink-features", "AutomationControlled"),
 		chromedp.Flag("mute-audio", true), // never play sound on the server itself
@@ -262,8 +265,11 @@ func chromeFlags(opt BrowserOptions) []chromedp.ExecAllocatorOption {
 		chromedp.Flag("js-flags", "--max-old-space-size=512"),
 		chromedp.WindowSize(opt.Width, opt.Height),
 	)
-	if opt.ChromePath != "" {
-		opts = append(opts, chromedp.ExecPath(opt.ChromePath))
+	if !opt.Engine.Shell { // chrome-headless-shell is always headless and has no "new" mode
+		opts = append(opts, chromedp.Flag("headless", "new"))
+	}
+	if opt.Engine.Path != "" {
+		opts = append(opts, chromedp.ExecPath(opt.Engine.Path))
 	}
 	return opts
 }
@@ -276,7 +282,9 @@ func detectUserAgent(opt BrowserOptions) (string, error) {
 	defer cancelAlloc()
 	ctx, cancel := chromedp.NewContext(actx)
 	defer cancel()
-	v, err := chromedp.CallBrowser(ctx, browser.GetVersion, cdp.Empty{})
+	tctx, tcancel := context.WithTimeout(ctx, 30*time.Second) // a browser that never comes up must not hang startup
+	defer tcancel()
+	v, err := chromedp.CallBrowser(tctx, browser.GetVersion, cdp.Empty{})
 	if err != nil {
 		return "", err
 	}
@@ -288,53 +296,253 @@ func startBrowser(hub *Hub, opt BrowserOptions) (*Browser, error) {
 	if err != nil {
 		return nil, err
 	}
-	opts := append(chromeFlags(opt), chromedp.UserAgent(ua), chromedp.UserDataDir(opt.Profile))
-	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
-	root, _ := chromedp.NewContext(allocCtx)
-	if err := chromedp.Do(root); err != nil { // starts Chrome and attaches to its first blank tab
-		cancelAlloc()
-		return nil, err
-	}
-
 	b := &Browser{
-		root:        root,
-		cancelAlloc: cancelAlloc,
-		hub:         hub,
-		opt:         opt,
-		wake:        make(chan struct{}, 1),
-		known:       map[string]bool{},
-		view:        View{opt.Width, opt.Height, opt.Quality},
-		streams:     map[string]byte{},
-		ua:          ua,
-		dl:          newDownloads(),
+		hub:       hub,
+		opt:       opt,
+		wake:      make(chan struct{}, 1),
+		view:      View{opt.Width, opt.Height, opt.Quality},
+		streams:   map[string]byte{},
+		ua:        ua,
+		dl:        newDownloads(),
+		recovered: map[string]time.Time{},
 	}
 	for _, d := range []string{opt.DownloadDir, opt.UploadDir, opt.StateDir} {
 		if d != "" {
 			os.MkdirAll(d, 0o700)
 		}
 	}
+	go b.loop() // before launch: launch may already queue work (tab events)
+	if err := b.launch(); err != nil {
+		return nil, err
+	}
+	go b.watchAudio()
+	go b.watchHealth()
+	return b, nil
+}
+
+// launch starts Chrome and opens the start page. Used at startup and by restart.
+func (b *Browser) launch() error {
+	opts := append(chromeFlags(b.opt), chromedp.UserAgent(b.ua), chromedp.UserDataDir(b.opt.Profile))
+	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
+	root, _ := chromedp.NewContext(allocCtx)
+	// Starts Chrome and attaches to its first blank tab. Do binds the browser to root,
+	// so bound it with a timer instead of a timeout context.
+	timer := time.AfterFunc(30*time.Second, cancelAlloc)
+	err := chromedp.Do(root)
+	if !timer.Stop() && err == nil {
+		err = errors.New("the browser took too long to start")
+	}
+	if err != nil {
+		cancelAlloc()
+		return err
+	}
+
+	b.mu.Lock()
+	b.root, b.cancelAlloc = root, cancelAlloc
+	b.mu.Unlock()
 	firstBlank := chromedp.FromContext(root).Target.TargetID
-	b.known[string(firstBlank)] = true
+	b.createMu.Lock()
+	b.known = map[string]bool{string(firstBlank): true}
+	b.createMu.Unlock()
 
 	if err := chromedp.ListenBrowser(root, b.onBrowserEvent); err != nil {
-		return nil, err
+		cancelAlloc()
+		return err
 	}
-	if opt.DownloadDir != "" {
+	if b.opt.DownloadDir != "" {
 		ev := true
-		if _, err := chromedp.CallBrowser(root, browser.SetDownloadBehavior, browser.SetDownloadBehaviorParams{
-			Behavior: browser.SetDownloadBehaviorBehaviorAllow, DownloadPath: opt.DownloadDir, EventsEnabled: &ev}); err != nil {
+		ctx, cancel := cmdCtx(root)
+		if _, err := chromedp.CallBrowser(ctx, browser.SetDownloadBehavior, browser.SetDownloadBehaviorParams{
+			Behavior: browser.SetDownloadBehaviorBehaviorAllow, DownloadPath: b.opt.DownloadDir, EventsEnabled: &ev}); err != nil {
 			log.Println("chrome: downloads:", err)
 		}
+		cancel()
 	}
-	if _, err := b.openTab(opt.StartURL); err != nil {
-		return nil, err
+	if _, err := b.openTab(b.opt.StartURL); err != nil {
+		cancelAlloc()
+		return err
 	}
 	// Our tabs live in the same window, so closing the startup tab keeps Chrome running.
-	chromedp.CallBrowser(root, target.CloseTarget, target.CloseTargetParams{TargetID: firstBlank})
+	ctx, cancel := cmdCtx(root)
+	chromedp.CallBrowser(ctx, target.CloseTarget, target.CloseTargetParams{TargetID: firstBlank})
+	cancel()
+	return nil
+}
 
-	go b.loop()
-	go b.watchAudio()
-	return b, nil
+// rootCtx is the context of the running Chrome (it changes when Chrome restarts).
+func (b *Browser) rootCtx() context.Context {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.root
+}
+
+// cmdTimeout bounds one Chrome command, so a hung page or browser can never stall
+// the command queue (and with it every later click, key and agent step).
+const cmdTimeout = 15 * time.Second
+
+func cmdCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, cmdTimeout)
+}
+
+// ---------- Health: recover from a frozen tab or browser ----------
+
+// watchHealth pings Chrome and the active tab. A tab whose page stopped
+// responding is reopened; a browser that died or froze is restarted, so nobody
+// has to restart the server.
+func (b *Browser) watchHealth() {
+	const every, limit = 5 * time.Second, 8 * time.Second
+	browserFails, tabFails := 0, 0
+	var lastTab *Tab
+	for range time.Tick(every) {
+		b.mu.Lock()
+		closed, root, t, loading := b.closed, b.root, b.active, b.active != nil && b.active.loading
+		b.mu.Unlock()
+		if closed {
+			return
+		}
+		if root.Err() != nil { // Chrome exited or the connection dropped
+			b.restart("the browser closed unexpectedly")
+			browserFails, tabFails = 0, 0
+			continue
+		}
+		ctx, cancel := context.WithTimeout(root, limit)
+		_, err := chromedp.CallBrowser(ctx, browser.GetVersion, cdp.Empty{})
+		cancel()
+		if err != nil {
+			if browserFails++; browserFails >= 2 {
+				b.restart("the browser stopped responding")
+				browserFails, tabFails = 0, 0
+			}
+			continue
+		}
+		browserFails = 0
+
+		if t == nil || t != lastTab {
+			lastTab, tabFails = t, 0
+		}
+		if t == nil || t.ctx.Err() != nil {
+			continue
+		}
+		ctx, cancel = context.WithTimeout(t.ctx, limit)
+		_, err = chromedp.Call(ctx, cdpruntime.Evaluate, cdpruntime.EvaluateParams{Expression: "1"})
+		cancel()
+		// Only a timeout means "hung": errors like "context destroyed" come during normal navigation.
+		if err != nil && errors.Is(err, context.DeadlineExceeded) && t.ctx.Err() == nil {
+			tabFails++
+			if loading { // a slow page load gets more time
+				tabFails = min(tabFails, 2)
+			}
+			if tabFails >= 3 || (tabFails >= 2 && !loading) {
+				b.recoverTab(t)
+				lastTab, tabFails = nil, 0
+			}
+			continue
+		}
+		tabFails = 0
+	}
+}
+
+// recoverTab replaces a tab whose page froze (endless script, runaway memory…).
+func (b *Browser) recoverTab(t *Tab) {
+	b.mu.Lock()
+	u := t.url
+	again := time.Since(b.recovered[u]) < 2*time.Minute
+	b.recovered[u] = time.Now()
+	b.mu.Unlock()
+	log.Println("chrome: tab not responding:", u)
+	reopen := !again && (strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://"))
+	// Open the replacement first: a window whose last tab closes is gone, and
+	// headless Chrome then can't open tabs. Tabs are made by the browser process,
+	// which still answers while a page is frozen.
+	b.mu.Lock()
+	last := len(b.tabs) == 1
+	b.mu.Unlock()
+	var repl *Tab
+	if reopen || last {
+		var err error
+		if repl, err = b.createTab(); err != nil {
+			log.Println("chrome: replacement tab:", err)
+		}
+	}
+	t.cancel() // ends every command still waiting on it, and closes the target
+	if reopen {
+		go b.hub.systemChat("The page stopped responding and was reloaded: " + u)
+	} else {
+		go b.hub.systemChat("The page stopped responding and was closed: " + u)
+	}
+	b.enqueue(func() {
+		if repl == nil {
+			b.closeTab(t.id)
+			return
+		}
+		b.activate(repl)
+		b.closeTab(t.id)
+		dest := b.opt.StartURL
+		if reopen {
+			dest = u
+		}
+		if nu := normalizeURL(dest); nu != "" {
+			b.mu.Lock()
+			repl.fresh = true
+			b.mu.Unlock()
+			ctx, cancel := cmdCtx(repl.ctx)
+			defer cancel()
+			if _, err := chromedp.Call(ctx, page.Navigate, page.NavigateParams{URL: nu}); err != nil {
+				log.Println("chrome: reopen tab:", err)
+			}
+		}
+	})
+}
+
+// restart kills Chrome and starts a fresh one with the same profile (cookies and logins stay).
+func (b *Browser) restart(reason string) {
+	if !b.rmu.TryLock() {
+		return
+	}
+	defer b.rmu.Unlock()
+	log.Println("chrome: restarting:", reason)
+	go b.hub.systemChat("Restarting the browser: " + reason)
+
+	b.mu.Lock()
+	if b.closed {
+		b.mu.Unlock()
+		return
+	}
+	tabs, root, cancelAlloc := b.tabs, b.root, b.cancelAlloc
+	b.tabs, b.active, b.frame, b.gotFrame = nil, nil, nil, false
+	clear(b.streams)
+	b.mu.Unlock()
+	b.notify()
+
+	for _, t := range tabs {
+		t.cancel() // unblocks anything still waiting on the old tabs
+	}
+	done := make(chan struct{})
+	go func() { chromedp.Cancel(root); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+	}
+	cancelAlloc() // kills the process if it is still there
+
+	for try := 1; ; try++ {
+		err := b.launch()
+		if err == nil {
+			b.hub.systemChat("The browser is back")
+			return
+		}
+		log.Printf("chrome: restart failed (try %d): %v", try, err)
+		b.mu.Lock()
+		closed := b.closed
+		b.mu.Unlock()
+		if closed {
+			return
+		}
+		if try == 3 {
+			b.hub.systemChat("Could not restart the browser: " + err.Error())
+		}
+		time.Sleep(min(time.Duration(try)*5*time.Second, time.Minute))
+	}
 }
 
 // ---------- Command queue ----------
@@ -367,12 +575,31 @@ func (b *Browser) loop() {
 			b.jobs[0] = nil
 			b.jobs = b.jobs[1:]
 			b.qmu.Unlock()
-			if j.kind == jobFunc {
-				j.f()
-			} else {
-				b.dispatchMouse(j.mouse)
-			}
+			b.runJob(j)
 		}
+	}
+}
+
+// jobLimit is the longest one queued command may hold up the ones behind it.
+const jobLimit = 30 * time.Second
+
+// runJob runs one command. Every Chrome call has its own timeout, but if a
+// command still hangs, the queue moves on instead of freezing for everyone
+// (the hung command finishes or fails on its own later).
+func (b *Browser) runJob(j *job) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if j.kind == jobFunc {
+			j.f()
+		} else {
+			b.dispatchMouse(j.mouse)
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(jobLimit):
+		log.Println("chrome: a command took too long; moving on")
 	}
 }
 
@@ -456,13 +683,17 @@ func (b *Browser) viewSize() View {
 
 // Close shuts Chrome down, so no process is left behind when we exit.
 func (b *Browser) Close() {
+	b.mu.Lock()
+	b.closed = true
+	root, cancelAlloc := b.root, b.cancelAlloc
+	b.mu.Unlock()
 	done := make(chan struct{})
-	go func() { chromedp.Cancel(b.root); close(done) }()
+	go func() { chromedp.Cancel(root); close(done) }()
 	select {
 	case <-done:
 	case <-time.After(3 * time.Second):
 	}
-	b.cancelAlloc()
+	cancelAlloc()
 }
 
 // onTab runs f on the active tab from the queue.
@@ -486,7 +717,13 @@ func (b *Browser) onTab(f func(t *Tab) error) {
 func (b *Browser) createTab() (*Tab, error) {
 	b.createMu.Lock()
 	nw := false
-	res, err := chromedp.CallBrowser(b.root, target.CreateTarget, target.CreateTargetParams{URL: "about:blank", NewWindow: &nw})
+	ctx, cancel := cmdCtx(b.rootCtx())
+	res, err := chromedp.CallBrowser(ctx, target.CreateTarget, target.CreateTargetParams{URL: "about:blank", NewWindow: &nw})
+	if err != nil && strings.Contains(err.Error(), "no browser is open") {
+		nw = true // the window closed with its last tab: open a new one
+		res, err = chromedp.CallBrowser(ctx, target.CreateTarget, target.CreateTargetParams{URL: "about:blank", NewWindow: &nw})
+	}
+	cancel()
 	if err == nil {
 		b.known[string(res.TargetID)] = true
 	}
@@ -508,7 +745,9 @@ func (b *Browser) openTab(rawURL string) (*Tab, error) {
 		b.mu.Lock()
 		t.fresh = true
 		b.mu.Unlock()
-		_, err = chromedp.Call(t.ctx, page.Navigate, page.NavigateParams{URL: u})
+		ctx, cancel := cmdCtx(t.ctx)
+		_, err = chromedp.Call(ctx, page.Navigate, page.NavigateParams{URL: u})
+		cancel()
 	}
 	return t, err
 }
@@ -516,12 +755,20 @@ func (b *Browser) openTab(rawURL string) (*Tab, error) {
 // attach connects to a tab, prepares it (screen size, audio tap) and adds it to the tab strip.
 func (b *Browser) attach(id, openerID string, opened bool) (*Tab, error) {
 	t := &Tab{id: id, opener: openerID, title: "New Tab", url: "about:blank", obs: newObserver(id)}
-	ctx, cancel := chromedp.NewContext(b.root, chromedp.WithTargetID(target.ID(id)), chromedp.WithListener(b.tabListener(t)))
-	t.ctx, t.cancel = ctx, cancel
-	if err := chromedp.Do(ctx); err != nil {
+	tabCtx, cancel := chromedp.NewContext(b.rootCtx(), chromedp.WithTargetID(target.ID(id)), chromedp.WithListener(b.tabListener(t)))
+	t.ctx, t.cancel = tabCtx, cancel
+	// Do binds the tab to its context, so bound it with a timer instead of a timeout context.
+	timer := time.AfterFunc(cmdTimeout, cancel)
+	err := chromedp.Do(tabCtx)
+	if !timer.Stop() && err == nil {
+		err = errors.New("the tab did not respond")
+	}
+	if err != nil {
 		cancel()
 		return nil, err
 	}
+	ctx, cancelSetup := context.WithTimeout(tabCtx, cmdTimeout) // all setup steps together
+	defer cancelSetup()
 
 	b.mu.Lock()
 	v, emu := b.view, b.emu
@@ -604,9 +851,13 @@ func (b *Browser) activate(t *Tab) {
 	b.notify()
 
 	if old != nil {
-		chromedp.Call(old.ctx, page.StopScreencast, cdp.Empty{})
+		ctx, cancel := context.WithTimeout(old.ctx, 3*time.Second)
+		chromedp.Call(ctx, page.StopScreencast, cdp.Empty{})
+		cancel()
 	}
-	chromedp.CallBrowser(b.root, target.ActivateTarget, target.ActivateTargetParams{TargetID: target.ID(t.id)})
+	ctx, cancel := cmdCtx(b.rootCtx())
+	chromedp.CallBrowser(ctx, target.ActivateTarget, target.ActivateTargetParams{TargetID: target.ID(t.id)})
+	cancel()
 	b.startScreencast(t, v)
 }
 
@@ -614,10 +865,12 @@ func (b *Browser) startScreencast(t *Tab, v View) {
 	q := int64(v.Quality)
 	// Chrome refuses while a page is between two documents, so retry briefly.
 	for try := 0; try < 10; try++ {
-		_, err := chromedp.Call(t.ctx, page.StartScreencast, page.StartScreencastParams{
+		ctx, cancel := context.WithTimeout(t.ctx, 5*time.Second)
+		_, err := chromedp.Call(ctx, page.StartScreencast, page.StartScreencastParams{
 			Format: page.StartScreencastFormatJpeg, Quality: &q,
 			MaxWidth: int64(v.Width), MaxHeight: int64(v.Height), EveryNthFrame: 1,
 		})
+		cancel()
 		if err == nil || t.ctx.Err() != nil || strings.Contains(err.Error(), "already active") {
 			break
 		}
@@ -635,7 +888,9 @@ func (b *Browser) startScreencast(t *Tab, v View) {
 		if !need {
 			return
 		}
-		shot, err := chromedp.Call(t.ctx, page.CaptureScreenshot, page.CaptureScreenshotParams{Format: page.CaptureScreenshotFormatJpeg, Quality: &q})
+		ctx, cancel := cmdCtx(t.ctx)
+		shot, err := chromedp.Call(ctx, page.CaptureScreenshot, page.CaptureScreenshotParams{Format: page.CaptureScreenshotFormatJpeg, Quality: &q})
+		cancel()
 		if err != nil {
 			return
 		}
@@ -727,7 +982,9 @@ func (b *Browser) onBrowserEvent(ev any) {
 			}
 			b.mu.Unlock()
 			if t != nil {
-				chromedp.Call(t.ctx, page.Reload, page.ReloadParams{})
+				ctx, cancel := cmdCtx(t.ctx)
+				chromedp.Call(ctx, page.Reload, page.ReloadParams{})
+				cancel()
 			}
 		})
 	}
@@ -749,7 +1006,9 @@ func (b *Browser) adopt(info *target.Info) {
 	background := time.Now().Before(b.bgUntil)
 	b.mu.Unlock()
 	if full {
-		chromedp.CallBrowser(b.root, target.CloseTarget, target.CloseTargetParams{TargetID: info.TargetID})
+		ctx, cancel := cmdCtx(b.rootCtx())
+		chromedp.CallBrowser(ctx, target.CloseTarget, target.CloseTargetParams{TargetID: info.TargetID})
+		cancel()
 		b.hub.systemChat("Tab limit reached — close a tab first")
 		return
 	}
@@ -758,9 +1017,11 @@ func (b *Browser) adopt(info *target.Info) {
 		log.Println("chrome: new tab:", err)
 		return
 	}
-	if res, err := chromedp.CallBrowser(b.root, target.GetTargetInfo, target.GetTargetInfoParams{TargetID: info.TargetID}); err == nil && res.TargetInfo != nil {
+	ctx, cancel := cmdCtx(b.rootCtx())
+	if res, err := chromedp.CallBrowser(ctx, target.GetTargetInfo, target.GetTargetInfoParams{TargetID: info.TargetID}); err == nil && res.TargetInfo != nil {
 		info = res.TargetInfo // the page kept loading while we attached
 	}
+	cancel()
 	b.onInfo(info)
 	if !background {
 		b.enqueue(func() { b.activate(t) })
@@ -805,7 +1066,11 @@ func (b *Browser) tabListener(t *Tab) func(ev any) {
 		switch e := ev.(type) {
 		case *page.EventScreencastFrame:
 			sid := e.SessionID
-			go chromedp.Call(t.ctx, page.ScreencastFrameAck, page.ScreencastFrameAckParams{SessionID: sid})
+			go func() {
+				ctx, cancel := cmdCtx(t.ctx)
+				chromedp.Call(ctx, page.ScreencastFrameAck, page.ScreencastFrameAckParams{SessionID: sid})
+				cancel()
+			}()
 			pkt := make([]byte, 1+len(e.Data))
 			pkt[0] = pktFrame
 			copy(pkt[1:], e.Data)
@@ -844,7 +1109,9 @@ func (b *Browser) tabListener(t *Tab) func(ev any) {
 			b.notify()
 			if reset { // a new tab starts at about:blank; going "back" there makes no sense
 				go func() {
-					chromedp.Call(t.ctx, page.ResetNavigationHistory, cdp.Empty{})
+					ctx, cancel := cmdCtx(t.ctx)
+					chromedp.Call(ctx, page.ResetNavigationHistory, cdp.Empty{})
+					cancel()
 					b.refreshNav(t)
 				}()
 			}
@@ -861,7 +1128,11 @@ func (b *Browser) tabListener(t *Tab) func(ev any) {
 			}
 
 		case *page.EventJavascriptDialogOpening:
-			go chromedp.Call(t.ctx, page.HandleJavaScriptDialog, page.HandleJavaScriptDialogParams{Accept: true})
+			go func() {
+				ctx, cancel := cmdCtx(t.ctx)
+				chromedp.Call(ctx, page.HandleJavaScriptDialog, page.HandleJavaScriptDialogParams{Accept: true})
+				cancel()
+			}()
 			if e.Message != "" {
 				go b.hub.systemChat("Page says: " + e.Message)
 			}
@@ -908,7 +1179,9 @@ func (b *Browser) refreshNav(t *Tab) {
 	t.navSeq++
 	seq := t.navSeq
 	b.mu.Unlock()
-	h, err := chromedp.Call(t.ctx, page.GetNavigationHistory, cdp.Empty{})
+	ctx, cancel := cmdCtx(t.ctx)
+	h, err := chromedp.Call(ctx, page.GetNavigationHistory, cdp.Empty{})
+	cancel()
 	if err != nil {
 		return
 	}
@@ -1096,10 +1369,14 @@ func (b *Browser) SetView(v View) {
 		b.gotFrame = false
 		b.mu.Unlock()
 		for _, tab := range tabs {
-			chromedp.Call(tab.ctx, emulation.SetDeviceMetricsOverride, metrics(v, emu))
+			ctx, cancel := context.WithTimeout(tab.ctx, 5*time.Second)
+			chromedp.Call(ctx, emulation.SetDeviceMetricsOverride, metrics(v, emu))
+			cancel()
 		}
 		if t != nil {
-			chromedp.Call(t.ctx, page.StopScreencast, cdp.Empty{})
+			ctx, cancel := context.WithTimeout(t.ctx, 5*time.Second)
+			chromedp.Call(ctx, page.StopScreencast, cdp.Empty{})
+			cancel()
 			b.startScreencast(t, v)
 		}
 		b.hub.broadcastView(v)
@@ -1112,7 +1389,9 @@ func (b *Browser) Navigate(raw string) {
 		return
 	}
 	b.onTab(func(t *Tab) error {
-		_, err := chromedp.Call(t.ctx, page.Navigate, page.NavigateParams{URL: u})
+		ctx, cancel := cmdCtx(t.ctx)
+		defer cancel()
+		_, err := chromedp.Call(ctx, page.Navigate, page.NavigateParams{URL: u})
 		return err
 	})
 }
@@ -1126,7 +1405,9 @@ func (b *Browser) History(delta int64) {
 
 // goHistory moves back (-1) or forward (1) in the tab's history; false if there is nowhere to go.
 func goHistory(t *Tab, delta int64) (bool, error) {
-	h, err := chromedp.Call(t.ctx, page.GetNavigationHistory, cdp.Empty{})
+	ctx, cancel := cmdCtx(t.ctx)
+	defer cancel()
+	h, err := chromedp.Call(ctx, page.GetNavigationHistory, cdp.Empty{})
 	if err != nil {
 		return false, err
 	}
@@ -1134,20 +1415,24 @@ func goHistory(t *Tab, delta int64) (bool, error) {
 	if i < 0 || i >= int64(len(h.Entries)) {
 		return false, nil
 	}
-	_, err = chromedp.Call(t.ctx, page.NavigateToHistoryEntry, page.NavigateToHistoryEntryParams{EntryID: h.Entries[i].ID})
+	_, err = chromedp.Call(ctx, page.NavigateToHistoryEntry, page.NavigateToHistoryEntryParams{EntryID: h.Entries[i].ID})
 	return true, err
 }
 
 func (b *Browser) Reload() {
 	b.onTab(func(t *Tab) error {
-		_, err := chromedp.Call(t.ctx, page.Reload, page.ReloadParams{})
+		ctx, cancel := cmdCtx(t.ctx)
+		defer cancel()
+		_, err := chromedp.Call(ctx, page.Reload, page.ReloadParams{})
 		return err
 	})
 }
 
 func (b *Browser) Stop() {
 	b.onTab(func(t *Tab) error {
-		_, err := chromedp.Call(t.ctx, page.StopLoading, cdp.Empty{})
+		ctx, cancel := cmdCtx(t.ctx)
+		defer cancel()
+		_, err := chromedp.Call(ctx, page.StopLoading, cdp.Empty{})
 		return err
 	})
 }

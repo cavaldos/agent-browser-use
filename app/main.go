@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -520,6 +521,8 @@ func main() {
 		fl.PrintDefaults()
 	}
 	port := fl.Int("port", 3000, "HTTP port")
+	fl.IntVar(port, "p", 3000, "HTTP port (short for -port)")
+	fl.StringVar(&authPassword, "pw", "", "password needed to open the web UI and use /mcp (empty = no password)")
 	data := fl.String("data", "", "file to keep the chat history in across restarts (empty = memory only)")
 	noBrowser := fl.Bool("no-browser", false, "disable the shared browser")
 	noAudio := fl.Bool("no-audio", false, "disable shared browser audio")
@@ -530,7 +533,8 @@ func main() {
 	fl.IntVar(&bo.MaxTabs, "max-tabs", 12, "maximum number of open tabs")
 	fl.StringVar(&bo.StartURL, "start", "https://www.google.com", "page for new tabs")
 	fl.StringVar(&bo.Profile, "profile", "chrome-profile", "folder for the shared browser's cookies/logins")
-	fl.StringVar(&bo.ChromePath, "chrome", "", "path to Chrome (empty = auto-detect)")
+	fl.StringVar(&bo.ChromePath, "chrome", "", "path to the browser executable (empty = auto-detect)")
+	engine := fl.String("engine", "auto", "browser to run: chromium, chrome, edge, brave, vivaldi, headless-shell (lightest); auto = Chromium, else the first one installed")
 	fl.StringVar(&bo.DownloadDir, "downloads", "", "folder for downloaded files (empty = \"downloads\" next to the profile folder)")
 	fl.StringVar(&bo.UploadDir, "uploads", "", "folder the agent may upload files from (empty = \"uploads\" next to the profile folder)")
 	fl.StringVar(&bo.StateDir, "states", "", "folder for saved logins/sessions (empty = \"states\" next to the profile folder)")
@@ -541,6 +545,10 @@ func main() {
 	noMCP := fl.Bool("no-mcp", false, "disable the MCP endpoint /mcp")
 	mcpRemote := fl.Bool("mcp-remote", false, "allow /mcp from other machines (default: this machine only)")
 	fl.Parse(args)
+	if fl.NArg() > 0 { // e.g. `make run -p 8080`: make takes -p itself and only "8080" arrives here
+		fmt.Fprintf(os.Stderr, "Unexpected arguments: %s\nFlags start with -, e.g. ./run -p 8080 -pw secret (with make: make run p=8080 pw=secret)\n", strings.Join(fl.Args(), " "))
+		os.Exit(2)
+	}
 	bo.Audio = !*noAudio
 	log.SetOutput(os.Stderr)
 
@@ -572,6 +580,16 @@ func main() {
 
 	mcp := &MCPServer{}
 	if !*noBrowser {
+		eng, err := resolveEngine(*engine, bo.ChromePath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		bo.Engine = eng
+		// Each browser keeps its own profile: a profile written by a newer or
+		// different browser can refuse to open (or get damaged) in another one.
+		if eng.Name != "chrome" {
+			bo.Profile += "-" + eng.Name
+		}
 		if abs, err := filepath.Abs(bo.Profile); err == nil {
 			bo.Profile = abs
 		}
@@ -585,12 +603,12 @@ func main() {
 		}
 		b, err := startBrowser(h, bo)
 		if err != nil {
-			log.Fatalf("Could not start Chrome: %v\n(Install Google Chrome, pass -chrome <path>, or run with -no-browser)", err)
+			log.Fatalf("Could not start %s: %v\n(Pick another -engine, pass -chrome <path>, or run with -no-browser)", bo.Engine.Label, err)
 		}
 		h.browser = b
 		ao.ViewerURL = local + "/?join"
 		mcp.agent = newAgent(h, b, ao)
-		fmt.Fprintln(out, "Shared browser started (headless Chrome)")
+		fmt.Fprintf(out, "Shared browser started (headless %s: %s)\n", bo.Engine.Label, bo.Engine.Path)
 	}
 
 	sub, _ := fs.Sub(staticFiles, "static")
@@ -609,6 +627,9 @@ func main() {
 	if !*noMCP {
 		fmt.Fprintf(out, "MCP endpoint for AI agents: %s/mcp\n", local)
 	}
+	if authPassword != "" {
+		fmt.Fprintln(out, "Password protection is on (MCP clients: send \"Authorization: Bearer <password>\")")
+	}
 
 	// Close Chrome on the way out, so no process is left running.
 	quit := make(chan struct{}, 1)
@@ -618,7 +639,7 @@ func main() {
 		default:
 		}
 	}
-	go func() { log.Println(http.Serve(ln, mux)); stop() }()
+	go func() { log.Println(http.Serve(ln, requireAuth(mux))); stop() }()
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	go func() { <-sig; stop() }()

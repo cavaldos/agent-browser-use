@@ -285,7 +285,7 @@ func cookieLine(c *network.Cookie, full bool) string {
 }
 
 func (a *Agent) allCookies() ([]*network.Cookie, error) {
-	res, err := chromedp.CallBrowser(a.b.root, storage.GetCookies, storage.GetCookiesParams{})
+	res, err := chromedp.CallBrowser(a.b.rootCtx(), storage.GetCookies, storage.GetCookiesParams{})
 	return res.Cookies, err
 }
 
@@ -600,7 +600,7 @@ func (a *Agent) State(action, name, path string) (string, error) {
 			return "", err
 		}
 		if len(params) > 0 {
-			if _, err := chromedp.CallBrowser(a.b.root, storage.SetCookies, storage.SetCookiesParams{Cookies: params}); err != nil {
+			if _, err := chromedp.CallBrowser(a.b.rootCtx(), storage.SetCookies, storage.SetCookiesParams{Cookies: params}); err != nil {
 				return "", err
 			}
 		}

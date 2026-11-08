@@ -294,7 +294,7 @@ func (b *Browser) SetEmulation(o EmulateOpts) (Emulation, error) {
 		result = e
 
 		if e.Geo != nil { // without permission a page's geolocation request is just refused
-			chromedp.CallBrowser(b.root, browser.SetPermission, browser.SetPermissionParams{
+			chromedp.CallBrowser(b.rootCtx(), browser.SetPermission, browser.SetPermissionParams{
 				Permission: &browser.PermissionDescriptor{Name: "geolocation"}, Setting: browser.PermissionSettingGranted})
 		}
 		for _, t := range tabs {

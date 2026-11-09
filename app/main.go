@@ -26,6 +26,9 @@ import (
 //go:embed static
 var staticFiles embed.FS
 
+// version is set at build time by scripts/build.sh (-ldflags "-X main.version=vX.Y.Z").
+var version = "dev"
+
 // ---------- Data ----------
 
 type User struct {
@@ -581,7 +584,12 @@ func main() {
 	tunnelOn := fl.Bool("tunnel", false, "share the web UI on a public https URL (built-in Cloudflare tunnel, no router setup); sets a password if you gave none")
 	tunnelSub := fl.String("subdomain", "", "with -tunnel: name for the public URL (empty = random)")
 	tunnelBackend := fl.String("tunnel-backend", "", "with -tunnel: tunnel backend URL (empty = "+defaultTunnelBackend+")")
+	showVersion := fl.Bool("version", false, "print the version and exit")
 	fl.Parse(args)
+	if *showVersion {
+		fmt.Fprintln(os.Stdout, appName, version)
+		return
+	}
 	if fl.NArg() > 0 { // e.g. `make run -p 8080`: make takes -p itself and only "8080" arrives here
 		fmt.Fprintf(os.Stderr, "Unexpected arguments: %s\nFlags start with -, e.g. ./run -p 8080 -pw secret (with make: make run p=8080 pw=secret)\n", strings.Join(fl.Args(), " "))
 		os.Exit(2)

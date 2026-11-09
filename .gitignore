@@ -9,3 +9,5 @@ states/
 # cloudflared is fetched by scripts/fetch-cloudflared.sh and embedded at build time
 app/cloudflared/*
 !app/cloudflared/.gitkeep
+dist/
+.pi/

@@ -59,6 +59,44 @@ https://github.com/user-attachments/assets/19edb4dd-3e3f-45e3-8809-b27a6c31be58
 Keep the server running while you use your agents. Other commands: `make build` (builds `bin/agent-browser-use`),
 `make docker-logs`, `make docker-stop`. Options: `PORT=8080`, `HOST=0.0.0.0`, `ARGS="-agent-speed 1"`.
 
+## Install the binary (no root)
+
+Install `agent-browser-use` into your user folder (`~/.local/bin`). No `sudo` needed.
+
+**Option 1: from a release (no clone needed)**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/cavaldos/agent-browser-use/main/scripts/install.sh | sh
+```
+
+Or pin a version: `... | sh -s -- v1.2.3`. The script downloads the archive for your OS and CPU
+(macOS/Linux, arm64/amd64), checks its SHA-256 and copies `agent-browser-use` into `~/.local/bin`.
+You can also download the `.tar.gz` by hand from the [Releases page](https://github.com/cavaldos/agent-browser-use/releases).
+
+**Option 2: from a clone**
+
+```sh
+make install                  # builds bin/agent-browser-use and copies it to ~/.local/bin
+make install BINDIR=~/bin     # or any other folder you own
+```
+
+If `~/.local/bin` is not on your `PATH` yet, add it once (zsh):
+
+```sh
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && exec zsh
+```
+
+Then run it from anywhere:
+
+```sh
+agent-browser-use -version    # check the installed version
+agent-browser-use             # start the server: http://localhost:3000
+agent-browser-use mcp         # MCP over stdio, for clients that start the server themselves
+```
+
+The binary still needs Chrome or Chromium on the machine (see **Browser engine** below). Uninstall with
+`rm ~/.local/bin/agent-browser-use`.
+
 ## Connecting a coding agent (MCP)
 
 Once the server is running on port 3000, point your agent at `http://localhost:3000/mcp`.
@@ -176,22 +214,18 @@ make run -- -no-mcp                   # disable /mcp, use only as a shared brows
 make run -- -tunnel                   # public https URL for friends outside your network (no router setup)
 make run -- -tunnel -subdomain myapp  # choose the name: https://myapp.nport.link
 ./bin/agent-browser-use -h            # all options
+./run -h|--help                       # launcher help
 ```
 
-**Browser engine.** By default it uses Chromium (`brew install --cask chromium` on macOS),
-or the first other Chromium-based browser it finds (Chrome, Edge, Brave, Vivaldi). `headless-shell`
-(`npx @puppeteer/browsers install chrome-headless-shell@stable`) is the lightest choice.
-Each engine gets its own profile folder (e.g. `chrome-profile-brave`). Firefox and Safari
-are not supported: the shared screen needs the Chrome DevTools Protocol.
+Run `./run` in a terminal to see the startup menu: **Restart**, **Run in background**, or **Quit**.
 
-**Public tunnel.** `-tunnel` embeds `cloudflared` and uses the [nport](https://github.com/tuanngocptn/nport) backend to give you a public `https://….nport.link` URL. If you set no `-pw`, a random password is generated and printed. Run `scripts/fetch-cloudflared.sh` (done automatically by `make build`) so `go build` embeds the binary for your platform; for other platforms: `scripts/fetch-cloudflared.sh linux amd64`.
+**Browser engine.** Chromium by default (or the first installed Chromium-based browser: Chrome, Edge, Brave, Vivaldi); each keeps its own profile. Firefox/Safari are unsupported (they need CDP). For the lightest setup, install `headless-shell` via `npx @puppeteer/browsers install chrome-headless-shell@stable`.
 
-**Password.** With `-pw`, people get a login page; MCP clients send
-`Authorization: Bearer <password>` (e.g. `claude mcp add --transport http browser http://localhost:3000/mcp --header "Authorization: Bearer mysecret"`).
+**Tunnel.** `-tunnel` gives a public `https://….nport.link` URL via embedded `cloudflared`; without `-pw`, a random password is printed.
 
-**Freezes.** If a page stops responding for about 15 seconds, its tab is reloaded (or closed
-if it froze again within 2 minutes). If the browser itself crashes or freezes, it is restarted
-with the same profile, so logins stay and the server keeps running.
+**Password.** `-pw` guards the UI and `/mcp`; MCP clients send `Authorization: Bearer <password>`.
+
+**Recovery.** A frozen tab reloads (then closes); a crashed browser restarts with the same profile.
 
 ## Security
 
@@ -210,9 +244,24 @@ docs/       full guide and images
 bin/        built binary (make build)
 ```
 
+## Releasing (maintainers)
+
+```sh
+make release V=v1.2.3         # or: scripts/release.sh v1.2.3 (--dry-run to only run the checks)
+```
+
+The script runs on `main` only, needs a clean tree that matches `origin/main`, runs vet and tests, then creates
+and pushes the annotated tag. The tag starts [.github/workflows/release.yml](.github/workflows/release.yml), which builds
+`darwin` and `linux` binaries (arm64 and amd64) with the version stamped in, and publishes the GitHub Release with
+`SHA256SUMS`. Every push and pull request runs [.github/workflows/ci.yml](.github/workflows/ci.yml) (gofmt, vet, tests on Linux and macOS).
+
 ## Documentation
 
 - [docs/GUIDE.md](docs/GUIDE.md) — full guide: tools, options, shared browser room, data, security and limitations.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=cavaldos/agent-browser-use&type=Date)](https://star-history.com/#cavaldos/agent-browser-use&Date)
 
 ## License
 

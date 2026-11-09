@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: app/go.mod
+          cache-dependency-path: app/go.sum
+
+      - name: Check formatting
+        run: |
+          unformatted=$(cd app && gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Not gofmt-ed:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: Vet
+        run: cd app && go vet ./...
+
+      - name: Test
+        run: cd app && go test -race ./...
+
+      - name: Build
+        run: scripts/build.sh
+
+      - name: Smoke test the binary
+        run: ./bin/agent-browser-use -version

@@ -3,6 +3,7 @@ NAME  ?= agent-browser-use
 PORT  ?= 3000
 HOST  ?= 127.0.0.1
 ARGS  ?=
+BINDIR ?= $(HOME)/.local/bin
 export IMAGE NAME PORT HOST
 
 # Short options for `make run`:  make run p=8080 pw=secret engine=brave
@@ -16,13 +17,22 @@ ifeq (run,$(firstword $(MAKECMDGOALS)))
   endif
 endif
 
-.PHONY: run build docker docker-build docker-run docker-stop docker-logs clean
+.PHONY: run build install release docker docker-build docker-run docker-stop docker-logs clean
 
 run:          ## Run from source
 	./scripts/run.sh $(RUN_FLAGS) $(ARGS) $(RUN_ARGS)
 
 build:        ## Build bin/agent-browser-use
 	./scripts/build.sh
+
+install: build  ## Install the binary to ~/.local/bin (no root; BINDIR=... to change)
+	install -d "$(BINDIR)"
+	install -m 755 bin/agent-browser-use "$(BINDIR)/agent-browser-use"
+	@echo "Installed: $(BINDIR)/agent-browser-use"
+
+release:      ## Tag and push a release: make release V=v1.2.3
+	@test -n "$(V)" || { echo "usage: make release V=vX.Y.Z"; exit 1; }
+	./scripts/release.sh $(V)
 
 docker: docker-build docker-run   ## Build image and run it
 

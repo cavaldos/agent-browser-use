@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark">
-<title>Agent Browser Use</title>
+<meta name="color-scheme" content="dark light">
+<script>try{var t=localStorage.getItem("theme")||(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark");document.documentElement.dataset.theme=t}catch(e){}</script>
+<title>AGENT BROWSER // DATA CODE HUD</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -29,7 +30,7 @@
 </style>
 <link rel="stylesheet" href="style.css">
 </head>
-<body class="h-full overflow-hidden bg-[#0b0b0e] font-sans text-zinc-100 antialiased selection:bg-indigo-500/30">
+<body class="hud-body h-full overflow-hidden bg-[#0b0b0e] font-sans text-zinc-100 antialiased selection:bg-indigo-500/30">
 
 <!-- ============ Join screen ============ -->
 <div id="login" class="fixed inset-0 grid place-items-center p-4">
@@ -63,7 +64,8 @@
         <div class="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-indigo-400 to-violet-600 shadow-md shadow-indigo-600/30">
           <i data-icon="logo" class="h-4 w-4 text-white"></i>
         </div>
-        <span class="font-semibold tracking-tight">Agent Browser Use</span>
+        <span class="font-semibold tracking-tight">AGENT BROWSER</span>
+        <span class="hud-jp" aria-hidden="true">エージェントブラウザ</span>
       </div>
       <div class="ml-auto flex items-center gap-2">
         <div id="status" class="flex items-center gap-2 rounded-full bg-white/[.04] px-2.5 py-1 text-xs text-zinc-400 ring-1 ring-inset ring-white/[.06]">
@@ -84,6 +86,7 @@
         </div>
 
         <div class="h-5 w-px bg-white/[.08]"></div>
+        <button id="themeBtn" class="icon-btn" title="Toggle light / dark mode"><i data-icon="moon" class="i-moon h-[18px] w-[18px]"></i><i data-icon="sun" class="i-sun h-[18px] w-[18px]"></i></button>
         <button id="sidebarToggle" class="icon-btn relative" title="Chat & settings">
           <i data-icon="panel" class="h-[18px] w-[18px]"></i>
           <span id="unread" class="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-indigo-500 px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-[#0b0b0e]" hidden></span>

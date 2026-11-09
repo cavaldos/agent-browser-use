@@ -33,6 +33,24 @@ function playAudio(buf) {
   src.start(s.t);
   s.t += ab.duration;
 }
+// A short two-note "ding" when someone mentions you. It plays even if the shared browser's sound
+// is muted (it is a notification, not the page's audio), but not when you set the volume to 0.
+function playMentionSound() {
+  try {
+    if (prefs.volume <= 0) return;
+    ensureAudio();
+    const t = actx.currentTime;
+    [[880, 0], [1318.5, 0.11]].forEach(([f, d]) => {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = "sine"; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t + d);
+      g.gain.exponentialRampToValueAtTime(0.35 * Math.max(prefs.volume, 0.3), t + d + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.28);
+      o.connect(g); g.connect(actx.destination);
+      o.start(t + d); o.stop(t + d + 0.3);
+    });
+  } catch {}
+}
 function renderSound() {
   setIcon($("#soundBtn"), prefs.sound && prefs.volume > 0 ? "volume" : "volumeX", "h-[18px] w-[18px]");
   $("#soundBtn").title = prefs.sound ? "Mute" : "Unmute";

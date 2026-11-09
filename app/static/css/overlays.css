@@ -47,3 +47,9 @@
 #pickPop { position: absolute; z-index: 30; width: 340px; display: none; }
 #screen.picking, #viewport.picking { cursor: crosshair; }
 #pickBtn.on { background: rgba(96,165,250,.2); color: #93c5fd; }
+
+/* Chat mentions */
+.mention { border-radius: 4px; background: rgba(129,140,248,.18); color: #a5b4fc; padding: 0 3px; font-weight: 500; }
+.mention.me { background: rgba(250,204,21,.2); color: #fde047; }
+#mentionList button { display: flex; width: 100%; align-items: center; gap: 8px; border-radius: 8px; padding: 6px 8px; text-align: left; color: #e4e4e7; }
+#mentionList button.sel, #mentionList button:hover { background: rgba(255,255,255,.08); }

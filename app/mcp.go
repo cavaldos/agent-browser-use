@@ -40,6 +40,7 @@ You take control by yourself when you act, even from a person, and give it back 
 After an action, the result lists new console errors and failed requests ("Page problems"). Dig deeper with browser_console_messages and browser_network_requests.
 Files: browser_downloads waits for/reads downloaded files; browser_file_upload fills file inputs (from the upload folder only).
 Logins: browser_cookies, browser_storage and browser_state (save/load a whole session by name, or export/import sessions as a JSON file to move them between machines). browser_snapshot_diff shows what changed on the page. browser_emulate switches to a phone/tablet or changes locale, dark mode, location and network speed.
+People can chat with you from the viewer: when idle, call browser_read_chat (time: 60) to wait for messages written to you with @<your name> or @agent, and answer with browser_say.
 If a tool says the agent is blocked, a person clicked "Block agent": wait, or ask them (browser_say) to click "Unblock".`
 
 // ---------- JSON-RPC ----------
@@ -81,11 +82,15 @@ func errorResult(err error) toolResult {
 }
 
 type MCPServer struct {
-	agent *Agent
+	agent    *Agent
+	sessions sync.Map // Mcp-Session-Id -> *Seat
 }
 
+// mcpConn is one MCP client connection: it knows which coding agent is on the other side.
+type mcpConn struct{ seat *Seat }
+
 // handle answers one message; nil for notifications.
-func (s *MCPServer) handle(raw []byte) *rpcResponse {
+func (s *MCPServer) handle(raw []byte, c *mcpConn) *rpcResponse {
 	var req rpcRequest
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return &rpcResponse{JSONRPC: "2.0", ID: json.RawMessage("null"), Error: &rpcError{-32700, "parse error"}}
@@ -98,8 +103,12 @@ func (s *MCPServer) handle(raw []byte) *rpcResponse {
 	case "initialize":
 		var p struct {
 			ProtocolVersion string `json:"protocolVersion"`
+			ClientInfo      struct {
+				Name string `json:"name"`
+			} `json:"clientInfo"`
 		}
 		json.Unmarshal(req.Params, &p)
+		c.seat = s.agent.hub.registerSeat(p.ClientInfo.Name)
 		v := protocolVersions[0]
 		if slices.Contains(protocolVersions, p.ProtocolVersion) {
 			v = p.ProtocolVersion
@@ -127,7 +136,10 @@ func (s *MCPServer) handle(raw []byte) *rpcResponse {
 			resp.Error = &rpcError{-32602, "unknown tool: " + p.Name}
 			break
 		}
-		resp.Result = s.callTool(p.Name, p.Arguments)
+		if c.seat == nil { // the client did not say who it is (no initialize / no session id)
+			c.seat = s.agent.hub.registerSeat("")
+		}
+		resp.Result = s.callTool(p.Name, p.Arguments, c.seat)
 	case "resources/list":
 		resp.Result = map[string]any{"resources": []any{}}
 	case "prompts/list":
@@ -335,8 +347,14 @@ var tools = []tool{
 			"accuracy":    map[string]any{"type": "number", "description": "Location accuracy in meters (default 100)"},
 			"network":     map[string]any{"type": "string", "enum": []string{"online", "offline", "slow-3g", "fast-3g", "4g"}},
 		})},
+	{Name: "browser_read_chat", Title: "Read the room chat", Annotations: readOnly,
+		Description: "Read messages people wrote to you in the viewer's chat with @agent (people address you by your client name, e.g. @opencode, or @agent for every agent; only new ones since your last read; all=true shows the whole chat). With time (seconds, max 60) it waits for a new message when there is none. Answer with browser_say. Messages may contain picked-element codes like el-3f9a: look them up with browser_get_element.",
+		InputSchema: schema(map[string]any{
+			"time": map[string]any{"type": "number", "description": "Seconds to wait for a new message if there is none (default 0, max 60)"},
+			"all":  map[string]any{"type": "boolean", "description": "Show the whole chat, not only new messages for you"},
+		})},
 	{Name: "browser_say", Title: "Tell the people watching", Annotations: readOnly,
-		Description: "Show a short message to the people watching the browser (a caption on the screen and a line in the room chat). Use it to explain your plan or to ask them for help, e.g. to log in or solve a captcha.",
+		Description: "Show a short message to the people watching the browser (a caption on the screen and a line in the room chat). This is also how you reply to a chat message read with browser_read_chat. Use it to explain your plan or to ask them for help, e.g. to log in or solve a captcha.",
 		InputSchema: schema(map[string]any{"message": str("What to tell them")}, "message")},
 }
 
@@ -406,7 +424,7 @@ type toolArgs struct {
 	Network       *string      `json:"network"`
 }
 
-func (s *MCPServer) callTool(name string, raw json.RawMessage) toolResult {
+func (s *MCPServer) callTool(name string, raw json.RawMessage, seat *Seat) toolResult {
 	a := s.agent
 	if a == nil {
 		return errorResult(errors.New("the shared browser is disabled on this server (started with -no-browser)"))
@@ -438,6 +456,9 @@ func (s *MCPServer) callTool(name string, raw json.RawMessage) toolResult {
 		}
 		if problems := a.Alerts(); problems != "" {
 			out += "\n" + problems
+		}
+		if n := a.hub.unreadFor(seat); n > 0 {
+			out += fmt.Sprintf("\n%d new chat message(s) for you: call browser_read_chat.\n", n)
 		}
 		return textResult(out + "\n" + snap)
 	}
@@ -586,11 +607,15 @@ func (s *MCPServer) callTool(name string, raw json.RawMessage) toolResult {
 			return textResult(out)
 		}
 		return withSnapshot("Emulation updated", out, nil)
+	case "browser_read_chat":
+		a.mu.Unlock() // waiting for a message must not block the other agents' tool calls
+		defer a.mu.Lock()
+		return textResult(a.hub.ReadChat(seat, args.Time, args.All))
 	case "browser_say":
 		if strings.TrimSpace(args.Message) == "" {
 			return errorResult(errors.New("message is required"))
 		}
-		a.Say(args.Message)
+		a.Say(args.Message, seat.Handle)
 		return textResult("Shown to the people watching.")
 	}
 	return errorResult(errors.New("unknown tool " + name))
@@ -637,6 +662,11 @@ func (s *MCPServer) ServeHTTP(allowRemote bool) http.HandlerFunc {
 			return
 		}
 		body = bytes.TrimSpace(body)
+		conn := &mcpConn{}
+		sid := r.Header.Get("Mcp-Session-Id")
+		if v, ok := s.sessions.Load(sid); ok && sid != "" {
+			conn.seat = v.(*Seat)
+		}
 		var out any
 		if len(body) > 0 && body[0] == '[' { // batch (older protocol versions)
 			var batch []json.RawMessage
@@ -646,15 +676,20 @@ func (s *MCPServer) ServeHTTP(allowRemote bool) http.HandlerFunc {
 			}
 			var resps []*rpcResponse
 			for _, m := range batch {
-				if resp := s.handle(m); resp != nil {
+				if resp := s.handle(m, conn); resp != nil {
 					resps = append(resps, resp)
 				}
 			}
 			if len(resps) > 0 {
 				out = resps
 			}
-		} else if resp := s.handle(body); resp != nil {
+		} else if resp := s.handle(body, conn); resp != nil {
 			out = resp
+		}
+		if sid == "" && conn.seat != nil { // initialize: give the client a session so we know who it is next time
+			sid = newID()
+			s.sessions.Store(sid, conn.seat)
+			w.Header().Set("Mcp-Session-Id", sid)
 		}
 		if out == nil {
 			w.WriteHeader(http.StatusAccepted)
@@ -679,7 +714,8 @@ func (s *MCPServer) serveStdio() {
 		os.Stdout.Write(append(b, '\n'))
 		wmu.Unlock()
 	}
-	dispatchLines(os.Stdin, func(line []byte) { write(s.handle(line)) })
+	conn := &mcpConn{}
+	dispatchLines(os.Stdin, func(line []byte) { write(s.handle(line, conn)) })
 }
 
 // dispatchLines calls f for each line of r. Tool calls run one after another in the

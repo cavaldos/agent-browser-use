@@ -9,11 +9,22 @@ a web viewer shows the agent's cursor, the element it is acting on, and a log of
 
 ![Demo](docs/images/demo.png)
 
+## Screenshots
+
+**Watch the agent work.** Its cursor, a caption for every step and a log in the chat, with a one-click *Take over* or *Block agent* whenever you want control.
+
+![The agent is in control: cursor, captions and step log](docs/images/agent-control.png)
+
+**Pick an element and share it.** Select any element on the page, copy its code and give it to your coding agent, or post it in the room chat.
+
+![Picking an element to share with a coding agent](docs/images/pick-element.png)
+
 ## Features
 
 - **Playwright-style MCP tools** — `browser_snapshot` returns an accessibility outline with a `ref` for every element, and the action tools (click, type, scroll, drag, select…) use those refs.
 - **Live viewer** — watch the page stream in your browser, with the agent's cursor, captions and chat log.
 - **Shared browser room** — you and the agent use the same Chrome; take control at any time, or block the agent.
+- **Pick an element** — click the pick button, point at anything on the page and get a short code (e.g. `el-1d2a`). Paste it to your coding agent, which looks the element up with `browser_get_element` and can act on it right away.
 - **Persistent logins** — cookies live in a profile folder, so you sign in once and the agent reuses the session.
 - **No heavy dependencies** — no Docker, X server or video encoder needed. Docker is available if you prefer it.
 

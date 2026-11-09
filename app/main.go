@@ -36,26 +36,30 @@ type User struct {
 }
 
 type ChatMsg struct {
-	User  string `json:"user"`
-	Color string `json:"color"`
-	Text  string `json:"text"`
-	Time  int64  `json:"time"`
-	Agent bool   `json:"agent,omitempty"`
+	User  string   `json:"user"`
+	Color string   `json:"color"`
+	Text  string   `json:"text"`
+	Time  int64    `json:"time"`
+	Agent bool     `json:"agent,omitempty"`
+	ID    int64    `json:"id,omitempty"`      // order in the room; coding agents read from here
+	ToBot bool     `json:"toAgent,omitempty"` // addressed to every agent with @agent
+	To    []string `json:"to,omitempty"`      // addressed to these agents, e.g. "opencode"
 }
 
 // JSON message between the web page and the server.
 type Msg struct {
-	Type  string    `json:"type"`
-	ID    string    `json:"id,omitempty"`
-	Text  string    `json:"text,omitempty"`
-	X     float64   `json:"x,omitempty"`
-	Y     float64   `json:"y,omitempty"`
-	On    bool      `json:"on,omitempty"`
-	You   *User     `json:"you,omitempty"`
-	User  *User     `json:"user,omitempty"`
-	Users []User    `json:"users,omitempty"`
-	Chat  []ChatMsg `json:"chat,omitempty"`
-	Msg   *ChatMsg  `json:"msg,omitempty"`
+	Type   string    `json:"type"`
+	ID     string    `json:"id,omitempty"`
+	Text   string    `json:"text,omitempty"`
+	X      float64   `json:"x,omitempty"`
+	Y      float64   `json:"y,omitempty"`
+	On     bool      `json:"on,omitempty"`
+	You    *User     `json:"you,omitempty"`
+	User   *User     `json:"user,omitempty"`
+	Users  []User    `json:"users,omitempty"`
+	Chat   []ChatMsg `json:"chat,omitempty"`
+	Agents *[]string `json:"agents,omitempty"` // handles of the connected coding agents
+	Msg    *ChatMsg  `json:"msg,omitempty"`
 
 	// Shared browser
 	Enabled bool      `json:"enabled,omitempty"`
@@ -114,9 +118,12 @@ type Hub struct {
 	agent     *Client // the AI agent: has no connection, shown in the room once it acts
 	agentOn   bool
 	agentLast time.Time
-	agentBusy bool             // a tool call is running (it may be waiting for the page): not idle
-	agentFrom *Client          // the person the agent took control from; gets it back when the agent is done
-	blocked   *User            // set while someone has blocked the agent from taking control
+	agentBusy bool    // a tool call is running (it may be waiting for the page): not idle
+	agentFrom *Client // the person the agent took control from; gets it back when the agent is done
+	blocked   *User   // set while someone has blocked the agent from taking control
+	chatSeq   int64
+	seats     map[string]*Seat // connected coding agents, by @handle
+	chatWake  chan struct{}    // closed when a message for the agent arrives
 	picks     map[string]*Pick // elements people picked in the viewer, by code
 	pickOrder []string
 	humanLast time.Time // last time the person in control sent input (the agent waits while they are active)
@@ -147,6 +154,9 @@ func (h *Hub) load() {
 	var s saved
 	if json.Unmarshal(b, &s) == nil && s.Chat != nil {
 		h.chat = s.Chat
+		for _, m := range h.chat {
+			h.chatSeq = max(h.chatSeq, m.ID)
+		}
 	}
 }
 
@@ -286,8 +296,15 @@ func (h *Hub) handle(c *Client, m Msg) {
 			m.Text = string(r[:1000])
 		}
 		cm := ChatMsg{User: c.user.Name, Color: c.user.Color, Text: m.Text, Time: time.Now().UnixMilli()}
+		h.routeChat(&cm)
 		h.pushChat(cm)
+		if cm.ToBot || len(cm.To) > 0 {
+			h.wakeAgents()
+		}
 		h.broadcast(Msg{Type: "chat", Msg: &cm}, nil)
+		if cm.ToBot || len(cm.To) > 0 {
+			h.noticeUnheard(cm)
+		}
 		h.save()
 
 	case "pick":
@@ -372,6 +389,8 @@ func (h *Hub) handle(c *Client, m Msg) {
 }
 
 func (h *Hub) pushChat(cm ChatMsg) {
+	h.chatSeq++
+	cm.ID = h.chatSeq
 	h.chat = append(h.chat, cm)
 	if len(h.chat) > 200 {
 		h.chat = h.chat[len(h.chat)-200:]
@@ -431,6 +450,8 @@ func (h *Hub) serveWS(w http.ResponseWriter, r *http.Request) {
 	h.mu.Lock()
 	h.clients[c] = true
 	init.Users, init.Chat = h.usersLocked(), h.chat
+	seats := h.seatNames()
+	init.Agents = &seats
 	if h.ctrl != nil {
 		init.Ctrl = &h.ctrl.user
 	}

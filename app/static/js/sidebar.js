@@ -54,7 +54,8 @@ function addChat(c, live) {
   } else {
     const line = document.createElement("p");
     line.className = "whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-200" + (live ? " fade-in" : "");
-    line.textContent = c.text;
+    renderMentions(line, c.text);
+    if (live && c.user !== prefs.name && mentionsMe(c.text)) { toast(`${c.user} mentioned you`, "chat"); playMentionSound(); }
     if (lastGroup && lastGroup.user === c.user && c.time - lastGroup.time < 3 * 60 * 1000) {
       lastGroup.lines.appendChild(line);
       lastGroup.time = c.time;

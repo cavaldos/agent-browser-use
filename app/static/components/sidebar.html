@@ -16,9 +16,10 @@
         <p class="text-xs text-zinc-500">Say hi to the room 👋</p>
       </div>
       <div id="messages" class="flex-1 overflow-y-auto px-3 py-4" hidden></div>
-      <form id="chatForm" class="shrink-0 p-3">
+      <form id="chatForm" class="relative shrink-0 p-3">
+        <div id="mentionList" class="pop absolute inset-x-3 bottom-full z-20 mb-1 overflow-hidden rounded-xl border border-white/10 bg-zinc-900/95 p-1 text-sm shadow-2xl backdrop-blur" hidden></div>
         <div class="flex items-center gap-1 rounded-xl border border-white/[.08] bg-zinc-900/80 pl-3.5 pr-1 transition focus-within:border-indigo-400/50 focus-within:ring-4 focus-within:ring-indigo-500/10">
-          <input id="chatInput" class="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-zinc-500" placeholder="Message the room…" maxlength="1000" autocomplete="off">
+          <input id="chatInput" class="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-zinc-500" placeholder="Message the room… (@ to mention)" maxlength="1000" autocomplete="off">
           <button class="icon-btn h-8 w-8 text-indigo-300 hover:text-indigo-200" title="Send"><i data-icon="send" class="h-4 w-4"></i></button>
         </div>
       </form>

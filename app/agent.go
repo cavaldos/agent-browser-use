@@ -142,10 +142,16 @@ func (h *Hub) agentSend(m Msg) {
 }
 
 // agentLog adds a line from the agent to the chat (not saved to disk on its own).
-func (h *Hub) agentLog(text string) {
+func (h *Hub) agentLog(text string) { h.agentChat("", text) }
+
+// agentChat adds a line to the chat from a coding agent (who = its @handle; empty = the generic "AI Agent").
+func (h *Hub) agentChat(who, text string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	cm := ChatMsg{User: h.agent.user.Name, Color: h.agent.user.Color, Text: text, Time: time.Now().UnixMilli(), Agent: true}
+	if who != "" {
+		cm.User = who
+	}
 	h.pushChat(cm)
 	h.broadcast(Msg{Type: "chat", Msg: &cm}, nil)
 }
@@ -1049,9 +1055,9 @@ func (a *Agent) Evaluate(fn, ref string) (string, error) {
 	return out, err
 }
 
-func (a *Agent) Say(text string) {
+func (a *Agent) Say(text, who string) {
 	a.hub.agentSend(Msg{Type: "agent", Act: "say", Text: text})
-	a.hub.agentLog("💬 " + text)
+	a.hub.agentChat(who, text)
 }
 
 // Tabs lists, opens, selects or closes tabs.

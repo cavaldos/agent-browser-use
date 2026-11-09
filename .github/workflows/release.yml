@@ -29,21 +29,8 @@ jobs:
       - name: Build binaries
         env:
           VERSION: ${{ github.ref_name }}
-        run: |
-          set -e
-          mkdir -p dist
-          for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
-            os=${target%/*}; arch=${target#*/}
-            ext=; [ "$os" = windows ] && ext=.exe
-            # Absolute path: build.sh runs go build inside app/, so a relative OUT would land in app/dist/.
-            out="$PWD/dist/agent-browser-use-$os-$arch$ext"
-            # Embed cloudflared for the target so -tunnel works in the released binary.
-            scripts/fetch-cloudflared.sh "$os" "$arch"
-            GOOS=$os GOARCH=$arch OUT="$out" scripts/build.sh
-            # Fail here if the binary is missing, instead of publishing an empty release.
-            test -s "$out"
-          done
-          ls -la dist
+        # Same script scripts/test-release.sh runs locally; the target list lives in it.
+        run: scripts/build-release.sh dist
 
       - name: Publish GitHub Release
         run: |

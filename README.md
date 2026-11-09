@@ -40,6 +40,25 @@ https://github.com/user-attachments/assets/19edb4dd-3e3f-45e3-8809-b27a6c31be58
 - **Persistent logins** — cookies live in a profile folder, so you sign in once and the agent reuses the session.
 - **No heavy dependencies** — no Docker, X server or video encoder needed. Docker is available if you prefer it.
 
+## Quick start
+
+1. Download the project and start the server (requires Go 1.22+ and Chrome/Chromium, or just Docker):
+
+   ```sh
+   git clone https://github.com/cavaldos/agent-browser-use.git
+   cd agent-browser-use
+   make run            # starts the server on port 3000
+   ```
+
+   Or run it with Docker: `make docker`.
+
+2. The server listens on **port 3000**:
+   - Viewer (watch the agent): **http://localhost:3000**
+   - MCP endpoint (connect agents): **http://localhost:3000/mcp**
+
+Keep the server running while you use your agents. Other commands: `make build` (builds `bin/agent-browser-use`),
+`make docker-logs`, `make docker-stop`. Options: `PORT=8080`, `HOST=0.0.0.0`, `ARGS="-agent-speed 1"`.
+
 ## Install
 
 macOS / Linux (Windows: run it inside WSL)

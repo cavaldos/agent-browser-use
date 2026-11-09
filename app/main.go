@@ -78,6 +78,9 @@ type Msg struct {
 	DX      float64   `json:"dx,omitempty"`
 	DY      float64   `json:"dy,omitempty"`
 
+	// Picked page element (type "pick", Event hover|click)
+	Pick *Pick `json:"pick,omitempty"`
+
 	// What the AI agent is doing (type "agent")
 	Act  string `json:"act,omitempty"` // step, click, key, say
 	Rect *Rect  `json:"rect,omitempty"`
@@ -111,9 +114,11 @@ type Hub struct {
 	agent     *Client // the AI agent: has no connection, shown in the room once it acts
 	agentOn   bool
 	agentLast time.Time
-	agentBusy bool      // a tool call is running (it may be waiting for the page): not idle
-	agentFrom *Client   // the person the agent took control from; gets it back when the agent is done
-	blocked   *User     // set while someone has blocked the agent from taking control
+	agentBusy bool             // a tool call is running (it may be waiting for the page): not idle
+	agentFrom *Client          // the person the agent took control from; gets it back when the agent is done
+	blocked   *User            // set while someone has blocked the agent from taking control
+	picks     map[string]*Pick // elements people picked in the viewer, by code
+	pickOrder []string
 	humanLast time.Time // last time the person in control sent input (the agent waits while they are active)
 }
 
@@ -284,6 +289,11 @@ func (h *Hub) handle(c *Client, m Msg) {
 		h.pushChat(cm)
 		h.broadcast(Msg{Type: "chat", Msg: &cm}, nil)
 		h.save()
+
+	case "pick":
+		if h.browser != nil && (m.Event == "hover" || m.Event == "click") {
+			go h.pick(c, m)
+		}
 
 	case "control_take":
 		h.humanLast = time.Now()

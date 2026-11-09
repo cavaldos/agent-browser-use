@@ -75,6 +75,7 @@ function onMessage(m) {
       break;
     case "tabs": setTabs(m.tabs || [], m.active || ""); break;
     case "view": state.view = m.view; renderSettings(); layout(); break;
+    case "pick": onPick(m); break;
     case "chat": addChat(m.msg, true); break;
     case "emote": spawnEmote(m.text, m.user); break;
     case "cursor": moveCursor(m); break;

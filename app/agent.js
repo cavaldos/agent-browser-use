@@ -8,9 +8,11 @@
 //   hasText(s)            whether the page shows the text
 //   idleFor()             ms since the page last changed (clocks and timers ticking don't count)
 //   fileInput(ref)        the <input type=file> that belongs to the element (itself, inside it, or its label)
+//   pick(x, y)            describes the element under a viewport point (the viewer's "Pick" tool)
+//   resolve(ref, sel)     describes a picked element again (by ref, else by CSS selector)
 //   watchStart/State/Stop wait for the page (or one element) to change on its own
 (() => {
-  const V = 5;
+  const V = 6;
   if (window.__abu && window.__abu.v === V) return;
 
   // Refs stay the same for the same element across snapshots.
@@ -339,6 +341,42 @@
 
   const hasText = (s) => (document.body?.innerText || "").includes(s);
 
+  // ---- Picking an element (viewer "Pick" tool) ----
+  const cssPath = (el) => {
+    const parts = [];
+    for (let e = el; e && e.nodeType === 1 && e !== document.documentElement; e = e.parentElement) {
+      if (e.id && document.querySelectorAll("#" + CSS.escape(e.id)).length === 1) { parts.unshift("#" + CSS.escape(e.id)); break; }
+      let s = e.tagName.toLowerCase();
+      const sibs = e.parentElement ? [...e.parentElement.children].filter((c) => c.tagName === e.tagName) : [];
+      if (sibs.length > 1) s += `:nth-of-type(${sibs.indexOf(e) + 1})`;
+      parts.unshift(s);
+      if (parts.length >= 6) break;
+    }
+    return parts.join(" > ");
+  };
+  const describe = (el) => {
+    const role = roleOf(el) || null;
+    const r = el.getBoundingClientRect();
+    const html = el.outerHTML || "";
+    return {
+      ref: refOf(el), tag: el.tagName.toLowerCase(), role, name: nameOf(el, role) || "",
+      selector: cssPath(el), text: clean(el.innerText || "", 300),
+      html: html.length > 600 ? html.slice(0, 599) + "…" : html,
+      rect: { x: r.left, y: r.top, w: r.width, h: r.height },
+    };
+  };
+  const pick = (x, y) => {
+    let el = document.elementFromPoint(x, y);
+    while (el?.shadowRoot) { const inner = el.shadowRoot.elementFromPoint(x, y); if (!inner || inner === el) break; el = inner; }
+    return el && el !== document.documentElement && el !== document.body ? describe(el) : null;
+  };
+  const resolve = (r, sel) => {
+    let el = refs.get(r)?.deref();
+    if (!el || !el.isConnected) el = sel ? document.querySelector(sel) : null;
+    if (!el) throw new Error("The picked element is no longer on the page (it was removed or the page changed). Take a snapshot and find it again.");
+    return describe(el);
+  };
+
   // ---- Watching the page ----
   // busyAt: when the page last changed. watch: an ongoing wait for the page to change
   // ({ base: outline it is compared with, scope: element to watch or null, hit: what changed }).
@@ -397,7 +435,7 @@
   observer.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
 
   Object.defineProperty(window, "__abu", {
-    value: { v: V, refs, ids, get n() { return n; }, get, snapshot, locate, prepareInput, selectOption, hasText,
+    value: { v: V, refs, ids, get n() { return n; }, get, snapshot, pick, resolve, locate, prepareInput, selectOption, hasText,
       idleFor, watchStart, watchState, watchStop, observer, fileInput },
     configurable: true, enumerable: false, writable: true,
   });

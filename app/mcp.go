@@ -180,6 +180,9 @@ var tools = []tool{
 			"doubleClick": map[string]any{"type": "boolean", "description": "Double-click instead of a single click"},
 			"button":      map[string]any{"type": "string", "enum": []string{"left", "right", "middle"}, "description": "Mouse button (default left)"},
 		}, "element", "ref")},
+	{Name: "browser_get_element", Title: "Get a picked element", Annotations: readOnly,
+		Description: "Look up an element a person picked in the viewer with the Pick tool. They give you a code like \"el-3f9a\". Returns its ref (usable with browser_click, browser_type…), role, name, text, selector and HTML.",
+		InputSchema: schema(map[string]any{"code": str("The code shown in the viewer, e.g. \"el-3f9a\"")}, "code")},
 	{Name: "browser_hover", Title: "Hover", Description: "Move the mouse over an element (opens hover menus, tooltips…).",
 		InputSchema: schema(map[string]any{"element": elementProp, "ref": refProp}, "element", "ref")},
 	{Name: "browser_type", Title: "Type text", Description: "Type a whole piece of text in one call (never press letters one by one with browser_press_key). With ref: clicks that field first. Without ref: types into the field that has focus (e.g. after pressing Tab). Replaces the current content unless clear is false.",
@@ -361,6 +364,7 @@ type toolArgs struct {
 	Index        *float64 `json:"index"`
 	Message      string   `json:"message"`
 	Selector     string   `json:"selector"`
+	Code         string   `json:"code"`
 
 	Level         string       `json:"level"`
 	Limit         float64      `json:"limit"`
@@ -463,6 +467,12 @@ func (s *MCPServer) callTool(name string, raw json.RawMessage) toolResult {
 	case "browser_click":
 		note, err := a.Click(args.Ref, args.Element, args.Button, args.DoubleClick)
 		return withSnapshot("Clicked "+cmpOr(args.Element, args.Ref), note, err)
+	case "browser_get_element":
+		out, err := a.GetPicked(args.Code)
+		if err != nil {
+			return errorResult(err)
+		}
+		return textResult(out)
 	case "browser_hover":
 		return withSnapshot("Hovered "+cmpOr(args.Element, args.Ref), "", a.Hover(args.Ref, args.Element))
 	case "browser_type":

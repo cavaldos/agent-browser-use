@@ -40,3 +40,10 @@
 
 /* On small screens a healthy connection is just a green dot */
 @media (max-width: 767px) { #status.ok { background: none; box-shadow: none; padding: 0 4px; } }
+
+/* Pick tool: outline of the element under the pointer, and the card with its code */
+#pickBox { position: absolute; z-index: 11; pointer-events: none; border: 2px solid #60a5fa; background: rgba(96,165,250,.16); border-radius: 3px; display: none; }
+#pickBox .lbl { position: absolute; left: -2px; bottom: 100%; margin-bottom: 2px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: #3b82f6; color: #fff; font: 600 11px/1 Inter, sans-serif; padding: 3px 6px; border-radius: 4px; }
+#pickPop { position: absolute; z-index: 30; width: 340px; display: none; }
+#screen.picking, #viewport.picking { cursor: crosshair; }
+#pickBtn.on { background: rgba(96,165,250,.2); color: #93c5fd; }

@@ -585,14 +585,28 @@ func main() {
 	tunnelSub := fl.String("subdomain", "", "with -tunnel: name for the public URL (empty = random)")
 	tunnelBackend := fl.String("tunnel-backend", "", "with -tunnel: tunnel backend URL (empty = "+defaultTunnelBackend+")")
 	showVersion := fl.Bool("version", false, "print the version and exit")
+	fl.BoolVar(showVersion, "v", false, "print the version and exit (short for -version)")
+	doUpdate := fl.Bool("update", false, "update this program to the latest release and exit")
+	fl.BoolVar(doUpdate, "u", false, "update to the latest release (short for -update)")
 	fl.Parse(args)
 	if *showVersion {
 		fmt.Fprintln(os.Stdout, appName, version)
 		return
 	}
+	if *doUpdate {
+		if err := selfUpdate(); err != nil {
+			fmt.Fprintln(os.Stderr, "Update failed:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if fl.NArg() > 0 { // e.g. `make run -p 8080`: make takes -p itself and only "8080" arrives here
 		fmt.Fprintf(os.Stderr, "Unexpected arguments: %s\nFlags start with -, e.g. ./run -p 8080 -pw secret (with make: make run p=8080 pw=secret)\n", strings.Join(fl.Args(), " "))
 		os.Exit(2)
+	}
+	if !stdio && menuWanted() { // from a terminal: run the server as a child and show the menu
+		runMenu(args, *port, *tunnelOn)
+		return
 	}
 	bo.Audio = !*noAudio
 	log.SetOutput(os.Stderr)

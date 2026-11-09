@@ -45,26 +45,31 @@ jobs:
         run: |
           set -e
           mkdir -p dist
-          for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do
+          for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
             os=${target%/*}; arch=${target#*/}
             name=agent-browser-use_${VERSION}_${os}_${arch}
             mkdir -p "dist/$name"
             # Embed cloudflared for the target so -tunnel works in the released binary.
             scripts/fetch-cloudflared.sh "$os" "$arch"
-            GOOS=$os GOARCH=$arch OUT="dist/$name/agent-browser-use" scripts/build.sh
+            ext=; [ "$os" = windows ] && ext=.exe
+            GOOS=$os GOARCH=$arch OUT="dist/$name/agent-browser-use$ext" scripts/build.sh
             cp LICENSE README.md "dist/$name/"
-            tar -C dist -czf "dist/$name.tar.gz" "$name"
+            if [ "$os" = windows ]; then
+              (cd dist && zip -qr "$name.zip" "$name")
+            else
+              tar -C dist -czf "dist/$name.tar.gz" "$name"
+            fi
             rm -rf "dist/$name"
           done
-          cd dist && shasum -a 256 *.tar.gz > SHA256SUMS && cat SHA256SUMS
+          cd dist && shasum -a 256 *.tar.gz *.zip > SHA256SUMS && cat SHA256SUMS
 
       - name: Publish GitHub Release
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           if gh release view "$VERSION" >/dev/null 2>&1; then
-            gh release upload "$VERSION" dist/*.tar.gz dist/SHA256SUMS --clobber
+            gh release upload "$VERSION" dist/*.tar.gz dist/*.zip dist/SHA256SUMS --clobber
           else
-            gh release create "$VERSION" dist/*.tar.gz dist/SHA256SUMS \
+            gh release create "$VERSION" dist/*.tar.gz dist/*.zip dist/SHA256SUMS \
               --title "$VERSION" --generate-notes --verify-tag
           fi

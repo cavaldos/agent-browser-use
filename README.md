@@ -40,62 +40,38 @@ https://github.com/user-attachments/assets/19edb4dd-3e3f-45e3-8809-b27a6c31be58
 - **Persistent logins** — cookies live in a profile folder, so you sign in once and the agent reuses the session.
 - **No heavy dependencies** — no Docker, X server or video encoder needed. Docker is available if you prefer it.
 
-## Quick start
+## Install
 
-1. Download the project and start the server (requires Go 1.22+ and Chrome/Chromium, or just Docker):
-
-   ```sh
-   git clone https://github.com/cavaldos/agent-browser-use.git
-   cd agent-browser-use
-   make run            # starts the server on port 3000
-   ```
-
-   Or run it with Docker: `make docker`.
-
-2. The server listens on **port 3000**:
-   - Viewer (watch the agent): **http://localhost:3000**
-   - MCP endpoint (connect agents): **http://localhost:3000/mcp**
-
-Keep the server running while you use your agents. Other commands: `make build` (builds `bin/agent-browser-use`),
-`make docker-logs`, `make docker-stop`. Options: `PORT=8080`, `HOST=0.0.0.0`, `ARGS="-agent-speed 1"`.
-
-## Install the binary (no root)
-
-Install `agent-browser-use` into your user folder (`~/.local/bin`). No `sudo` needed.
-
-**Option 1: from a release (no clone needed)**
+macOS / Linux:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/cavaldos/agent-browser-use/main/scripts/install.sh | sh
 ```
 
-Or pin a version: `... | sh -s -- v1.2.3`. The script downloads the archive for your OS and CPU
-(macOS/Linux, arm64/amd64), checks its SHA-256 and copies `agent-browser-use` into `~/.local/bin`.
-You can also download the `.tar.gz` by hand from the [Releases page](https://github.com/cavaldos/agent-browser-use/releases).
+Windows (PowerShell):
 
-**Option 2: from a clone**
-
-```sh
-make install                  # builds bin/agent-browser-use and copies it to ~/.local/bin
-make install BINDIR=~/bin     # or any other folder you own
+```powershell
+irm https://raw.githubusercontent.com/cavaldos/agent-browser-use/main/scripts/install.ps1 | iex
 ```
 
-If `~/.local/bin` is not on your `PATH` yet, add it once (zsh):
+Then run `agent-browser-use`. Viewer: **http://localhost:3000**, MCP endpoint: **http://localhost:3000/mcp**.
+
+Uninstall: `rm ~/.local/bin/agent-browser-use` (Windows: `Remove-Item -Recurse $env:LOCALAPPDATA\agent-browser-use`)
+
+Prefer Docker or need more options? See [docs/INSTALL.md](docs/INSTALL.md).
+
+### Browser engine
 
 ```sh
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && exec zsh
+# macOS
+brew install --cask chromium
+# Debian / Ubuntu
+sudo apt install -y chromium
+# Fedora
+sudo dnf install -y chromium
+# Windows (PowerShell)
+winget install Hibbiki.Chromium
 ```
-
-Then run it from anywhere:
-
-```sh
-agent-browser-use -version    # check the installed version
-agent-browser-use             # start the server: http://localhost:3000
-agent-browser-use mcp         # MCP over stdio, for clients that start the server themselves
-```
-
-The binary still needs Chrome or Chromium on the machine (see **Browser engine** below). Uninstall with
-`rm ~/.local/bin/agent-browser-use`.
 
 ## Connecting a coding agent (MCP)
 
@@ -200,33 +176,6 @@ Then open **http://localhost:3000** to watch the agent work.
 
 See [docs/GUIDE.md](docs/GUIDE.md) for the full tool reference, options, the shared browser room, security and limitations.
 
-## Options
-
-```sh
-./run -p 8080 -pw mysecret            # run from source with any flags (make can't take -p itself)
-make run p=8080                       # another port (then use http://localhost:8080/mcp)
-make run pw=mysecret                  # require a password for the web UI and /mcp
-make run engine=brave                 # pick the browser: chromium, chrome, edge, brave, vivaldi, headless-shell
-make run -- -p 8080 -pw mysecret      # or pass any app flags after --
-make run -- -agent-speed 1            # slow the agent's cursor and typing so people can follow
-make run -- -mcp-remote               # allow other machines on your LAN to call /mcp
-make run -- -no-mcp                   # disable /mcp, use only as a shared browser room
-make run -- -tunnel                   # public https URL for friends outside your network (no router setup)
-make run -- -tunnel -subdomain myapp  # choose the name: https://myapp.nport.link
-./bin/agent-browser-use -h            # all options
-./run -h|--help                       # launcher help
-```
-
-Run `./run` in a terminal to see the startup menu: **Restart**, **Run in background**, or **Quit**.
-
-**Browser engine.** Chromium by default (or the first installed Chromium-based browser: Chrome, Edge, Brave, Vivaldi); each keeps its own profile. Firefox/Safari are unsupported (they need CDP). For the lightest setup, install `headless-shell` via `npx @puppeteer/browsers install chrome-headless-shell@stable`.
-
-**Tunnel.** `-tunnel` gives a public `https://….nport.link` URL via embedded `cloudflared`; without `-pw`, a random password is printed.
-
-**Password.** `-pw` guards the UI and `/mcp`; MCP clients send `Authorization: Bearer <password>`.
-
-**Recovery.** A frozen tab reloads (then closes); a crashed browser restarts with the same profile.
-
 ## Security
 
 - Uploads only read from the upload folder (and the download folder), never from other places on the machine. Saved sessions (`states/`) contain cookies: treat them like passwords.
@@ -244,20 +193,11 @@ docs/       full guide and images
 bin/        built binary (make build)
 ```
 
-## Releasing (maintainers)
-
-```sh
-make release V=v1.2.3         # or: scripts/release.sh v1.2.3 (--dry-run to only run the checks)
-```
-
-The script runs on `main` only, needs a clean tree that matches `origin/main`, runs vet and tests, then creates
-and pushes the annotated tag. The tag starts [.github/workflows/release.yml](.github/workflows/release.yml), which builds
-`darwin` and `linux` binaries (arm64 and amd64) with the version stamped in, and publishes the GitHub Release with
-`SHA256SUMS`. Every push and pull request runs [.github/workflows/ci.yml](.github/workflows/ci.yml) (gofmt, vet, tests on Linux and macOS).
-
 ## Documentation
 
+- [docs/INSTALL.md](docs/INSTALL.md) — Docker, building from source, options.
 - [docs/GUIDE.md](docs/GUIDE.md) — full guide: tools, options, shared browser room, data, security and limitations.
+- [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) — contributing and releasing.
 
 ## Star History
 

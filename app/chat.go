@@ -6,6 +6,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"regexp"
 	"slices"
 	"strings"
@@ -14,37 +15,124 @@ import (
 
 const seatTTL = 30 * time.Minute // a seat that has not been heard from for this long leaves the list
 
-// Seat is one connected coding agent.
+// Seat is one connected coding agent (one MCP session). Two OpenCodes are two seats.
 type Seat struct {
-	Handle    string // what people type after @
+	Handle    string // what people type after @: client name + "#" + a random id, e.g. opencode#3f9a
+	Base      string // the client name, e.g. opencode ("@opencode" reaches every OpenCode)
 	chatRead  int64  // last chat message id it has read
 	lastSeen  time.Time
 	lastRead  time.Time
-	listening int // browser_read_chat calls waiting right now
+	listening int    // browser_read_chat calls waiting right now
+	gone      string // why it left the room: "" still here, "self" (browser_disconnect / session ended), else the person who disconnected it
 }
 
 var handleBad = regexp.MustCompile(`[^a-z0-9_-]+`)
-var mentionRe = regexp.MustCompile(`(?i)(?:^|\s)@([a-z0-9_-]+)`)
+var mentionRe = regexp.MustCompile(`(?i)(?:^|\s)@([a-z0-9_-]+(?:#[a-z0-9]+)?)`)
 
-// registerSeat adds (or finds) the seat for a client name.
-func (h *Hub) registerSeat(name string) *Seat {
-	handle := strings.Trim(handleBad.ReplaceAllString(strings.ToLower(strings.TrimSpace(name)), "-"), "-")
-	if handle == "" || handle == "agent" || handle == "ai" {
-		handle = "coder"
+func seatBase(name string) string {
+	b := strings.Trim(handleBad.ReplaceAllString(strings.ToLower(strings.TrimSpace(name)), "-"), "-")
+	if b == "" || b == "agent" || b == "ai" {
+		b = "coder"
 	}
+	return b
+}
+
+// registerSeat: fresh (an MCP initialize) always gives a new seat with its own random id;
+// otherwise it reuses the latest seat with that client name (a client that never initialized).
+func (h *Hub) registerSeat(name string, fresh bool) *Seat {
+	base := seatBase(name)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.seats == nil {
 		h.seats = map[string]*Seat{}
 	}
-	s := h.seats[handle]
+	var s *Seat
+	if !fresh {
+		for _, o := range h.seats {
+			if o.Base == base && (s == nil || o.lastSeen.After(s.lastSeen)) {
+				s = o
+			}
+		}
+	}
 	if s == nil {
-		s = &Seat{Handle: handle, chatRead: h.chatSeq}
+		handle := ""
+		for handle == "" || h.seats[handle] != nil {
+			handle = fmt.Sprintf("%s#%04x", base, rand.Intn(0x10000))
+		}
+		s = &Seat{Handle: handle, Base: base, chatRead: h.chatSeq}
 		h.seats[handle] = s
 	}
 	s.lastSeen = time.Now()
 	h.broadcastSeats()
 	return s
+}
+
+// removeSeat takes an agent out of the room: it ended its MCP session (by "", silent), called
+// browser_disconnect (by "self"), or a person disconnected it (by = their name).
+func (h *Hub) removeSeat(s *Seat, by string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.dropSeat(s, by)
+}
+
+// caller holds h.mu
+func (h *Hub) dropSeat(s *Seat, by string) {
+	if h.seats[s.Handle] != s {
+		return
+	}
+	delete(h.seats, s.Handle)
+	s.gone = cmpOr(by, "self")
+	h.broadcastSeats()
+	if h.ctrl == h.agent && h.agent.user.ID == seatUser(s.Handle).ID {
+		h.agentRelease() // give control back to whoever had it
+	}
+	if h.browser != nil {
+		h.browser.releaseOwner(s.Handle) // its tab locks (and its sub-agents')
+	}
+	h.wakeAgents() // a browser_read_chat in progress returns now
+	switch by {
+	case "":
+	case "self":
+		h.addSystemChat("👋 @" + s.Handle + " disconnected from the browser")
+	default:
+		h.addSystemChat("🔌 " + by + " disconnected @" + s.Handle)
+	}
+}
+
+// kickSeat: a person in the room disconnects a coding agent by its @handle.
+// caller holds h.mu
+func (h *Hub) kickSeat(handle, by string) {
+	if s := h.seats[strings.TrimPrefix(handle, "@")]; s != nil {
+		h.dropSeat(s, by)
+	}
+}
+
+// seatGone says whether the seat may use the browser. An agent that left by itself comes back on its
+// next call (same @handle); one a person disconnected is refused until it connects again (new session).
+func (h *Hub) seatGone(s *Seat) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	switch s.gone {
+	case "":
+		return nil
+	case "self":
+		h.rejoinSeat(s)
+		return nil
+	}
+	return fmt.Errorf("%s disconnected you (@%s) from the shared browser. Stop using the browser tools; to use it again, the user has to reconnect you (restart this MCP server connection)", s.gone, s.Handle)
+}
+
+// rejoinSeat puts an agent that left by itself back in the room, with the same @handle if still free.
+// caller holds h.mu
+func (h *Hub) rejoinSeat(s *Seat) {
+	for h.seats[s.Handle] != nil {
+		s.Handle = fmt.Sprintf("%s#%04x", s.Base, rand.Intn(0x10000))
+	}
+	s.gone = ""
+	s.chatRead = h.chatSeq
+	s.lastSeen = time.Now()
+	h.seats[s.Handle] = s
+	h.broadcastSeats()
 }
 
 // caller holds h.mu
@@ -62,7 +150,39 @@ func (h *Hub) seatNames() []string {
 // caller holds h.mu
 func (h *Hub) broadcastSeats() {
 	n := h.seatNames()
+	if slices.Equal(n, h.seatsSent) {
+		return
+	}
+	h.seatsSent = n
 	h.broadcast(Msg{Type: "agents", Agents: &n}, nil)
+}
+
+// watchSeats drops seats that have not been heard from for seatTTL from everyone's room list.
+func (h *Hub) watchSeats() {
+	for range time.Tick(10 * time.Second) {
+		h.mu.Lock()
+		h.broadcastSeats()
+		h.mu.Unlock()
+	}
+}
+
+// seatUser is how a coding agent shows in the room (the web UI builds the same from the "agents" list).
+func seatUser(handle string) User {
+	return User{ID: "agent:" + handle, Name: handle, Color: agentUser.Color, Agent: true}
+}
+
+// agentAs makes the shared agent (the one holding control) show as this seat.
+func (h *Hub) agentAs(s *Seat) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	s.lastSeen = time.Now()
+	h.broadcastSeats()
+	if u := seatUser(s.Handle); h.agent.user.ID != u.ID {
+		h.agent.user = u
+		if h.ctrl == h.agent {
+			h.setCtrl(h.agent)
+		}
+	}
 }
 
 // routeChat finds who a chat message is for: "@agent" is every seat, "@opencode" just that one.
@@ -73,8 +193,16 @@ func (h *Hub) routeChat(cm *ChatMsg) {
 		switch {
 		case w == "agent" || w == "ai":
 			cm.ToBot = true
-		case h.seats[w] != nil && !slices.Contains(cm.To, w):
-			cm.To = append(cm.To, w)
+		case h.seats[w] != nil:
+			if !slices.Contains(cm.To, w) {
+				cm.To = append(cm.To, w)
+			}
+		default: // "@opencode": every OpenCode
+			for k, s := range h.seats {
+				if s.Base == w && !slices.Contains(cm.To, k) {
+					cm.To = append(cm.To, k)
+				}
+			}
 		}
 	}
 }
@@ -125,6 +253,10 @@ func (h *Hub) ReadChat(s *Seat, wait float64, all bool) string {
 	deadline := time.Now().Add(time.Duration(min(max(wait, 0), 60) * float64(time.Second)))
 	for {
 		h.mu.Lock()
+		if s.gone != "" {
+			h.mu.Unlock()
+			return "You are disconnected from the browser: no more chat messages for you."
+		}
 		s.lastSeen = time.Now()
 		var out []ChatMsg
 		for _, m := range h.chat {
@@ -179,4 +311,11 @@ func formatChat(msgs []ChatMsg, all bool, s *Seat) string {
 	}
 	b.WriteString("\nReply with browser_say. For an element code like el-3f9a, call browser_get_element.\n")
 	return b.String()
+}
+
+// seatCount is how many coding agents are connected.
+func (h *Hub) seatCount() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.seats)
 }

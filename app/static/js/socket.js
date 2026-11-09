@@ -28,11 +28,30 @@ function setStatus(text, ok) {
   s.title = ok ? "Connected" : text;
 }
 
+// Every connected coding agent is in the room as its own @handle (e.g. opencode#3f9a).
+const agentUserOf = (h) => ({ id: "agent:" + h, name: h, color: "#a78bfa", agent: true });
+function setAgents(handles, announce) {
+  const now = new Set(handles.map((h) => "agent:" + h));
+  for (const [id, u] of Object.entries(state.users)) {
+    if (!u.agent || now.has(id)) continue;
+    delete state.users[id];
+    removeAgentCursors(u.name);
+    if (announce) toast(`${u.name} left`, "userOff");
+  }
+  for (const h of handles) {
+    const id = "agent:" + h;
+    if (state.users[id]) continue;
+    state.users[id] = agentUserOf(h);
+    if (announce) toast(`🤖 ${h} joined`, "user");
+  }
+}
+
 function onMessage(m) {
   switch (m.type) {
     case "init":
       state.me = m.you;
       state.users = {}; (m.users || []).forEach((u) => (state.users[u.id] = u));
+      setAgents(m.agents || [], false);
       state.ctrl = m.ctrl || null;
       state.blocked = m.blocked || null;
       state.enabled = !!m.enabled;
@@ -46,6 +65,9 @@ function onMessage(m) {
       send({ type: "audio", on: prefs.sound });
       if (state.paused) send({ type: "pause", on: true });
       renderMembers(); renderCtrl(); renderBlock(); renderSettings(); layout();
+      break;
+    case "agents":
+      setAgents(m.agents || [], true); renderMembers();
       break;
     case "user_join":
       state.users[m.user.id] = m.user; renderMembers();

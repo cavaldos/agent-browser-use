@@ -66,7 +66,7 @@ function addChat(c, live) {
       const body = document.createElement("div");
       body.className = "min-w-0 flex-1";
       body.innerHTML = '<div class="flex items-baseline gap-2"><span class="text-[13px] font-semibold"></span><span class="text-[11px] text-zinc-500"></span></div><div class="space-y-0.5"></div>';
-      body.children[0].children[0].textContent = c.user;
+      setName(body.children[0].children[0], c.user);
       body.children[0].children[0].style.color = c.color;
       body.children[0].children[1].textContent = timeOf(c.time);
       body.children[1].appendChild(line);

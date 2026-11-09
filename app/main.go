@@ -86,8 +86,10 @@ type Msg struct {
 	Pick *Pick `json:"pick,omitempty"`
 
 	// What the AI agent is doing (type "agent")
-	Act  string `json:"act,omitempty"` // step, click, key, say
-	Rect *Rect  `json:"rect,omitempty"`
+	Act      string `json:"act,omitempty"` // step, click, key, say
+	Rect     *Rect  `json:"rect,omitempty"`
+	TabID    string `json:"tabId,omitempty"`
+	WorkerID string `json:"workerId,omitempty"`
 }
 
 type outMsg struct {
@@ -123,6 +125,7 @@ type Hub struct {
 	blocked   *User   // set while someone has blocked the agent from taking control
 	chatSeq   int64
 	seats     map[string]*Seat // connected coding agents, by @handle
+	seatsSent []string         // the agent list everyone has
 	chatWake  chan struct{}    // closed when a message for the agent arrives
 	picks     map[string]*Pick // elements people picked in the viewer, by code
 	pickOrder []string
@@ -254,10 +257,7 @@ func (h *Hub) usersLocked() []User {
 	for c := range h.clients {
 		us = append(us, c.user)
 	}
-	if h.agentOn {
-		us = append(us, h.agent.user)
-	}
-	return us
+	return us // coding agents come separately, in "agents"
 }
 
 // ---------- Handling client messages ----------
@@ -318,6 +318,9 @@ func (h *Hub) handle(c *Client, m Msg) {
 			h.agentFrom = nil
 			h.setCtrl(c)
 		}
+
+	case "agent_kick": // a person disconnects one coding agent (m.ID = its @handle)
+		h.kickSeat(m.ID, c.user.Name)
 
 	case "agent_block": // while blocked, the agent can't take control (and gives it back now if it has it)
 		if m.On && h.blocked == nil {

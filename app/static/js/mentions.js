@@ -5,12 +5,15 @@
 const handleOf = (name) => name.replace(/\s+/g, "");
 
 function mentionTargets() {
-  const list = [];
+  const list = [], agents = [];
   for (const u of Object.values(state.users)) {
-    if (u.agent || u.id === state.me?.id) continue;
-    list.push({ handle: handleOf(u.name), label: u.name, hint: "", user: u });
+    if (u.id === state.me?.id) continue;
+    if (u.agent) agents.push({ handle: u.name, label: u.name, hint: "agent", user: u });
+    else list.push({ handle: handleOf(u.name), label: u.name, hint: "", user: u });
   }
-  return list;
+  agents.sort((a, b) => a.handle.localeCompare(b.handle));
+  if (agents.length > 1) agents.unshift({ handle: "agent", label: "agent", hint: "every agent", user: { name: "agent", color: "#a78bfa", agent: true } });
+  return [...agents, ...list];
 }
 function mentionsMe(text) {
   return !!state.me && text.toLowerCase().split(/\s+/).includes("@" + handleOf(prefs.name || state.me.name).toLowerCase());
@@ -19,6 +22,8 @@ function mentionsMe(text) {
 function renderMentions(el, text) {
   const me = handleOf(prefs.name || state.me?.name || "").toLowerCase();
   const names = new Set(Object.values(state.users).map((u) => "@" + handleOf(u.name).toLowerCase()));
+  names.add("@agent"); names.add("@ai");
+  for (const u of Object.values(state.users)) if (u.agent) names.add("@" + u.name.split("#")[0].toLowerCase()); // @opencode = every OpenCode
   el.textContent = "";
   for (const part of text.split(/(@\S+)/)) {
     if (!part.startsWith("@")) { el.append(part); continue; }
@@ -27,7 +32,7 @@ function renderMentions(el, text) {
     if (!mine && !known) { el.append(part); continue; }
     const sp = document.createElement("span");
     sp.className = "mention" + (mine ? " me" : "");
-    sp.textContent = part;
+    setName(sp, part);
     el.append(sp);
   }
 }
@@ -52,7 +57,7 @@ function renderMentionList() {
     b.className = i === mentionSel ? "sel" : "";
     b.append(avatar(t.user, "h-6 w-6 text-[10px]"));
     const n = document.createElement("span");
-    n.textContent = t.label;
+    setName(n, t.label);
     const h = document.createElement("span");
     h.className = "ml-auto text-xs text-zinc-500";
     h.textContent = t.hint;

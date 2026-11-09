@@ -15,6 +15,7 @@ function setTabs(tabs, active) {
   state.tabs = tabs;
   state.active = active;
   renderTabs();
+  window.dispatchEvent(new Event("active-tab-changed"));
   renderToolbar();
   if (changedActive && focusOmniOnNewTab) {
     focusOmniOnNewTab = false;

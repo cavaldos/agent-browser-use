@@ -119,6 +119,12 @@ on has a `ref` (for example `e12`). Pass that `ref` to the action tools. Every a
 | `browser_tabs` | List / open / switch / close tabs. Tabs a page opens (`target=_blank`) become the current tab automatically |
 | `browser_say` | Show a message to the people watching (on-screen caption + chat line) |
 
+### Parallel tab workers
+
+**Multi-agent recipe:** the main coding agent calls `browser_tabs {"action":"new","background":true,"url":"…"}` once per sub-agent. Each call returns a `tabId`. Hand one `tabId` to each sub-agent; the sub-agent passes it on every `browser_*` call. Each tab then has its own cursor, refs and snapshots, so sub-agents never click on each other's pages. Never share one `tabId` between two sub-agents.
+
+Every browser tool accepts an optional `tabId`. Omit it for the existing active-tab behavior; when supplied, the MCP agent uses an independent serialized worker lane and cursor/snapshot state for that tab. Calls for different tabs can run concurrently, while calls targeting the same tab remain ordered. Tab creation, selection, and closing still use the shared browser lifecycle. Background-tab operations are parallel, but the visible video stream follows the human-selected active tab (only one tab can be streamed).
+
 ### See what the page is doing
 
 | Tool | What it does |

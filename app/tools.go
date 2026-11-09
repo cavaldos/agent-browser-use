@@ -32,6 +32,14 @@ import (
 func (a *Agent) activeObs() *observer {
 	a.b.mu.Lock()
 	defer a.b.mu.Unlock()
+	if a.tabID != "" {
+		for _, t := range a.b.tabs {
+			if t.id == a.tabID {
+				return t.obs
+			}
+		}
+		return nil
+	}
 	if a.b.active == nil {
 		return nil
 	}
@@ -246,6 +254,9 @@ func exceptionError(d *cdpruntime.ExceptionDetails) error {
 // pageURL is the address of the tab the agent is on.
 func (a *Agent) pageURL() string {
 	tabs, active, _, _ := a.b.State()
+	if a.tabID != "" {
+		active = a.tabID
+	}
 	for _, t := range tabs {
 		if t.ID == active {
 			return t.URL

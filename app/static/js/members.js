@@ -15,7 +15,8 @@ function guard() {
 // Header: overlapping avatars (you first, then whoever drives) + a popover with everyone.
 function renderMembers() {
   const me = state.me?.id, ctrl = state.ctrl?.id;
-  const rank = (u) => (u.id === me ? 0 : u.id === ctrl ? 1 : 2);
+  const isCtrl = (u) => u.id === ctrl;
+  const rank = (u) => (u.id === me ? 0 : isCtrl(u) ? 1 : 2);
   const list = Object.values(state.users).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
   const MAX = narrow.matches ? 3 : 5;
 
@@ -23,9 +24,9 @@ function renderMembers() {
   stack.innerHTML = "";
   list.slice(0, MAX).forEach((u) => {
     const wrap = document.createElement("span");
-    wrap.className = "member" + (u.id === ctrl ? " ctrl" : "");
+    wrap.className = "member" + (isCtrl(u) ? " ctrl" : "");
     wrap.appendChild(avatar(u, "h-7 w-7 text-[10px]"));
-    if (u.id === ctrl) {
+    if (isCtrl(u)) {
       const badge = document.createElement("span");
       badge.className = "badge";
       badge.innerHTML = svg("mouse", "h-2 w-2");
@@ -50,12 +51,37 @@ function renderMembers() {
     li.appendChild(avatar(u, "h-7 w-7 text-[10px]"));
     const name = document.createElement("span");
     name.className = "min-w-0 flex-1 truncate text-[13px] text-zinc-200";
-    name.textContent = u.name;
+    setName(name, u.name);
     if (u.id === me) name.insertAdjacentHTML("beforeend", ' <span class="text-zinc-500">(you)</span>');
     li.appendChild(name);
-    if (u.id === ctrl) li.insertAdjacentHTML("beforeend", `<span class="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300">${svg("mouse", "h-3 w-3")}In control</span>`);
+    if (isCtrl(u)) li.insertAdjacentHTML("beforeend", `<span class="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300">${svg("mouse", "h-3 w-3")}In control</span>`);
+    if (u.agent) li.appendChild(kickButton(u));
     ul.appendChild(li);
   });
+}
+
+// Disconnect a coding agent: it leaves the room, gives back control and its tabs, and can't use the
+// browser again until it is reconnected. Two clicks (the first one asks), so it can't happen by accident.
+function kickButton(u) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "agent-kick";
+  b.title = `Disconnect ${u.name} from the browser`;
+  b.innerHTML = svg("x", "h-3.5 w-3.5");
+  let armed;
+  b.onclick = (e) => {
+    e.stopPropagation();
+    if (!b.classList.contains("armed")) {
+      b.classList.add("armed");
+      b.innerHTML = svg("x", "h-3 w-3") + "<span>Disconnect?</span>";
+      clearTimeout(armed);
+      armed = setTimeout(() => { b.classList.remove("armed"); b.innerHTML = svg("x", "h-3.5 w-3.5"); }, 3000);
+      return;
+    }
+    clearTimeout(armed);
+    send({ type: "agent_kick", id: u.name });
+  };
+  return b;
 }
 
 function renderCtrl() {

@@ -41,6 +41,7 @@ After an action, the result lists new console errors and failed requests ("Page 
 Files: browser_downloads waits for/reads downloaded files; browser_file_upload fills file inputs (from the upload folder only).
 Logins: browser_cookies, browser_storage and browser_state (save/load a whole session by name, or export/import sessions as a JSON file to move them between machines). browser_snapshot_diff shows what changed on the page. browser_emulate switches to a phone/tablet or changes locale, dark mode, location and network speed.
 People can chat with you from the viewer: when idle, call browser_read_chat (time: 60) to wait for messages written to you with @<your name> or @agent, and answer with browser_say.
+Multi-agent: to run sub-agents in parallel, call browser_tabs {action:"new", background:true, url} once per sub-agent and give each its tabId. A sub-agent passes tabId on every browser_* call; it then has its own cursor, refs and snapshots, and never touches other tabs. Calls on different tabs run concurrently, calls on the same tab run in order. Sub-agents may also share a tab: give each a distinct "agent" name; to run a multi-step sequence that depends on page state (pick a tool, then draw), wrap it in browser_lock_tab / browser_unlock_tab.
 If a tool says the agent is blocked, a person clicked "Block agent": wait, or ask them (browser_say) to click "Unblock".`
 
 // ---------- JSON-RPC ----------
@@ -87,7 +88,10 @@ type MCPServer struct {
 }
 
 // mcpConn is one MCP client connection: it knows which coding agent is on the other side.
-type mcpConn struct{ seat *Seat }
+type mcpConn struct {
+	mu   sync.Mutex
+	seat *Seat
+}
 
 // handle answers one message; nil for notifications.
 func (s *MCPServer) handle(raw []byte, c *mcpConn) *rpcResponse {
@@ -108,7 +112,9 @@ func (s *MCPServer) handle(raw []byte, c *mcpConn) *rpcResponse {
 			} `json:"clientInfo"`
 		}
 		json.Unmarshal(req.Params, &p)
-		c.seat = s.agent.hub.registerSeat(p.ClientInfo.Name)
+		c.mu.Lock()
+		c.seat = s.agent.hub.registerSeat(p.ClientInfo.Name, true)
+		c.mu.Unlock()
 		v := protocolVersions[0]
 		if slices.Contains(protocolVersions, p.ProtocolVersion) {
 			v = p.ProtocolVersion
@@ -136,10 +142,13 @@ func (s *MCPServer) handle(raw []byte, c *mcpConn) *rpcResponse {
 			resp.Error = &rpcError{-32602, "unknown tool: " + p.Name}
 			break
 		}
+		c.mu.Lock()
 		if c.seat == nil { // the client did not say who it is (no initialize / no session id)
-			c.seat = s.agent.hub.registerSeat("")
+			c.seat = s.agent.hub.registerSeat("", false)
 		}
-		resp.Result = s.callTool(p.Name, p.Arguments, c.seat)
+		seat := c.seat
+		c.mu.Unlock()
+		resp.Result = s.callTool(p.Name, p.Arguments, seat)
 	case "resources/list":
 		resp.Result = map[string]any{"resources": []any{}}
 	case "prompts/list":
@@ -163,6 +172,8 @@ type tool struct {
 func str(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
 
 func schema(props map[string]any, required ...string) map[string]any {
+	props["tabId"] = str("Target tab ID; omitted uses the active tab")
+	props["agent"] = str("Your sub-agent name (e.g. \"painter-1\"). Agents that share a tab each get their own cursor, refs and snapshots; calls that click, drag or type take turns on the tab")
 	s := map[string]any{"type": "object", "properties": props}
 	if len(required) > 0 {
 		s["required"] = required
@@ -191,7 +202,9 @@ var tools = []tool{
 			"ref":         refProp,
 			"doubleClick": map[string]any{"type": "boolean", "description": "Double-click instead of a single click"},
 			"button":      map[string]any{"type": "string", "enum": []string{"left", "right", "middle"}, "description": "Mouse button (default left)"},
-		}, "element", "ref")},
+			"x":           map[string]any{"type": "number", "description": "Instead of ref: click at this x (page pixels), e.g. on a canvas"},
+			"y":           map[string]any{"type": "number", "description": "Instead of ref: click at this y (page pixels)"},
+		}, "element")},
 	{Name: "browser_get_element", Title: "Get a picked element", Annotations: readOnly,
 		Description: "Look up an element a person picked in the viewer with the Pick tool. They give you a code like \"el-3f9a\". Returns its ref (usable with browser_click, browser_type…), role, name, text, selector and HTML.",
 		InputSchema: schema(map[string]any{"code": str("The code shown in the viewer, e.g. \"el-3f9a\"")}, "code")},
@@ -220,13 +233,21 @@ var tools = []tool{
 			"element":   str("Description of the scrollable element (optional)"),
 			"ref":       str("Ref of a scrollable element to scroll inside (optional; default the page)"),
 		})},
-	{Name: "browser_drag", Title: "Drag and drop", Description: "Drag one element and drop it onto another.",
+	{Name: "browser_drag", Title: "Drag and drop", Description: "Drag one element and drop it onto another, or drag between two points (startX/startY to endX/endY, in page pixels) to draw on a canvas.",
 		InputSchema: schema(map[string]any{
+			"startX":       map[string]any{"type": "number", "description": "Instead of startRef: start x in page pixels"},
+			"startY":       map[string]any{"type": "number", "description": "Instead of startRef: start y in page pixels"},
+			"endX":         map[string]any{"type": "number", "description": "Instead of endRef: end x in page pixels"},
+			"endY":         map[string]any{"type": "number", "description": "Instead of endRef: end y in page pixels"},
 			"startElement": str("Description of the element to drag"),
 			"startRef":     str("Ref of the element to drag"),
 			"endElement":   str("Description of the drop target"),
 			"endRef":       str("Ref of the drop target"),
-		}, "startElement", "startRef", "endElement", "endRef")},
+		}, "startElement", "endElement")},
+	{Name: "browser_lock_tab", Title: "Lock a tab for yourself",
+		Description: "Multi-agent: take exclusive use of a tab for a short session, e.g. to pick a drawing tool and then draw with it, without another agent changing the page state in between. Other agents' clicks, drags and typing on this tab wait until you call browser_unlock_tab or the lock expires. Keep it short and always unlock.",
+		InputSchema: schema(map[string]any{"time": map[string]any{"type": "number", "description": "Seconds until the lock expires on its own (5-120, default 30)"}})},
+	{Name: "browser_unlock_tab", Title: "Unlock a tab", Description: "Give the tab back to the other agents.", InputSchema: schema(map[string]any{})},
 	{Name: "browser_wait_for", Title: "Wait", Annotations: readOnly,
 		Description: "Wait for text to appear, for text to disappear, or for a number of seconds. With text, time is the timeout (default 30).",
 		InputSchema: schema(map[string]any{
@@ -251,11 +272,12 @@ var tools = []tool{
 			"element":  str("Description of the element passed to the function (optional)"),
 			"ref":      str("Ref of an element to pass to the function (optional)"),
 		}, "function")},
-	{Name: "browser_tabs", Title: "Manage tabs", Description: "List, open, switch to or close tabs. Tabs that pages open (target=_blank links) become the current tab automatically.",
+	{Name: "browser_tabs", Title: "Manage tabs", Description: "List, open, switch to or close tabs. Tabs that pages open (target=_blank links) become the current tab automatically. Every tab has a tabId.",
 		InputSchema: schema(map[string]any{
-			"action": map[string]any{"type": "string", "enum": []string{"list", "new", "select", "close"}},
-			"index":  map[string]any{"type": "number", "description": "Tab index for select/close (close defaults to the current tab)"},
-			"url":    str("URL for a new tab (optional)"),
+			"action":     map[string]any{"type": "string", "enum": []string{"list", "new", "select", "close"}},
+			"index":      map[string]any{"type": "number", "description": "Tab index for select/close (close defaults to the current tab)"},
+			"url":        str("URL for a new tab (optional)"),
+			"background": map[string]any{"type": "boolean", "description": "With action=new: open the tab without switching to it and return its tabId. Multi-agent: give each sub-agent its own background tab and have it pass that tabId to every tool call, so sub-agents work in parallel without conflicts"},
 		}, "action")},
 	{Name: "browser_console_messages", Title: "Console messages", Annotations: readOnly,
 		Description: "Read the current tab's console: console.log/warn/error, uncaught exceptions and browser warnings (CSP, deprecations…). Use it to find out why a page misbehaves.",
@@ -356,6 +378,9 @@ var tools = []tool{
 	{Name: "browser_say", Title: "Tell the people watching", Annotations: readOnly,
 		Description: "Show a short message to the people watching the browser (a caption on the screen and a line in the room chat). This is also how you reply to a chat message read with browser_read_chat. Use it to explain your plan or to ask them for help, e.g. to log in or solve a captcha.",
 		InputSchema: schema(map[string]any{"message": str("What to tell them")}, "message")},
+	{Name: "browser_disconnect", Title: "Leave the shared browser",
+		Description: "Disconnect from the shared browser when you are done: you leave the room the people watch, give back control and free the tabs you locked. Calling any browser tool later connects you again.",
+		InputSchema: schema(map[string]any{})},
 }
 
 type toolArgs struct {
@@ -422,7 +447,20 @@ type toolArgs struct {
 	Longitude     *float64     `json:"longitude"`
 	Accuracy      *float64     `json:"accuracy"`
 	Network       *string      `json:"network"`
+	TabID         string       `json:"tabId"`
+	Background    *bool        `json:"background"`
+	Agent         string       `json:"agent"`
+	X             *float64     `json:"x"`
+	Y             *float64     `json:"y"`
+	StartX        *float64     `json:"startX"`
+	StartY        *float64     `json:"startY"`
+	EndX          *float64     `json:"endX"`
+	EndY          *float64     `json:"endY"`
 }
+
+// inputTools act on the page with the mouse or keyboard; they run one at a time per tab.
+var inputTools = map[string]bool{"browser_click": true, "browser_drag": true, "browser_hover": true, "browser_type": true,
+	"browser_press_key": true, "browser_scroll": true, "browser_select_option": true}
 
 func (s *MCPServer) callTool(name string, raw json.RawMessage, seat *Seat) toolResult {
 	a := s.agent
@@ -436,6 +474,40 @@ func (s *MCPServer) callTool(name string, raw json.RawMessage, seat *Seat) toolR
 		}
 	}
 
+	if err := a.hub.seatGone(seat); err != nil {
+		return errorResult(err)
+	}
+	if name == "browser_disconnect" {
+		a.hub.removeSeat(seat, "self")
+		return textResult(fmt.Sprintf("Disconnected: you (@%s) left the shared browser and its room, and gave back control and your tab locks. Calling any browser tool connects you again.", seat.Handle))
+	}
+	who := args.Agent
+	if who == "" {
+		who = seat.Handle // every coding agent has its own cursor, named after its @handle
+	} else {
+		who = seat.Handle + "/" + who // its sub-agents
+	}
+	a.hub.agentAs(seat)
+	a = a.worker(who, args.TabID)
+	me := cmpOr(who, "default")
+	switch name {
+	case "browser_lock_tab":
+		ttl := time.Duration(min(max(args.Time, 5), 120) * float64(time.Second))
+		if err := a.b.claimTab(args.TabID, me, ttl); err != nil {
+			return errorResult(err)
+		}
+		return textResult(fmt.Sprintf("Tab locked for %s for %.0fs. Other agents wait until you call browser_unlock_tab (or it expires).", me, ttl.Seconds()))
+	case "browser_unlock_tab":
+		a.b.releaseTab(args.TabID, me)
+		return textResult("Tab unlocked.")
+	}
+	if inputTools[name] {
+		unlock, err := a.b.lockGesture(args.TabID, me) // always gesture lock first, then a.mu
+		if err != nil {
+			return errorResult(err)
+		}
+		defer unlock()
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.begin()
@@ -486,7 +558,7 @@ func (s *MCPServer) callTool(name string, raw json.RawMessage, seat *Seat) toolR
 		}
 		return textResult(snap)
 	case "browser_click":
-		note, err := a.Click(args.Ref, args.Element, args.Button, args.DoubleClick)
+		note, err := a.Click(args.Ref, args.Element, args.Button, args.DoubleClick, args.X, args.Y)
 		return withSnapshot("Clicked "+cmpOr(args.Element, args.Ref), note, err)
 	case "browser_get_element":
 		out, err := a.GetPicked(args.Code)
@@ -507,7 +579,7 @@ func (s *MCPServer) callTool(name string, raw json.RawMessage, seat *Seat) toolR
 	case "browser_scroll":
 		return withSnapshot("Scrolled "+cmpOr(args.Direction, "down"), "", a.Scroll(args.Direction, args.Amount, args.Ref, args.Element))
 	case "browser_drag":
-		return withSnapshot("Dragged "+args.StartElement+" to "+args.EndElement, "", a.Drag(args.StartRef, args.StartElement, args.EndRef, args.EndElement))
+		return withSnapshot("Dragged "+args.StartElement+" to "+args.EndElement, "", a.Drag(args.StartRef, args.StartElement, args.EndRef, args.EndElement, args.StartX, args.StartY, args.EndX, args.EndY))
 	case "browser_wait_for":
 		return withSnapshot("Done waiting", "", a.WaitFor(args.Time, args.Text, args.TextGone))
 	case "browser_wait_for_change":
@@ -537,7 +609,7 @@ func (s *MCPServer) callTool(name string, raw json.RawMessage, seat *Seat) toolR
 		if (args.Action == "select") && index < 0 {
 			return errorResult(errors.New("index is required to select a tab"))
 		}
-		out, err := a.Tabs(args.Action, index, args.URL)
+		out, err := a.Tabs(args.Action, index, args.URL, args.TabID, args.Background != nil && *args.Background)
 		if err != nil {
 			return errorResult(err)
 		}
@@ -608,7 +680,7 @@ func (s *MCPServer) callTool(name string, raw json.RawMessage, seat *Seat) toolR
 		}
 		return withSnapshot("Emulation updated", out, nil)
 	case "browser_read_chat":
-		a.mu.Unlock() // waiting for a message must not block the other agents' tool calls
+		a.mu.Unlock() // waiting for a message must not block this worker's other calls
 		defer a.mu.Lock()
 		return textResult(a.hub.ReadChat(seat, args.Time, args.All))
 	case "browser_say":
@@ -648,8 +720,12 @@ func (s *MCPServer) ServeHTTP(allowRemote bool) http.HandlerFunc {
 		}
 		switch r.Method {
 		case http.MethodPost:
-		case http.MethodDelete:
-			w.WriteHeader(http.StatusOK) // no sessions to end
+		case http.MethodDelete: // the client ends its session: its agent leaves the room
+			sid := r.Header.Get("Mcp-Session-Id")
+			if v, ok := s.sessions.LoadAndDelete(sid); ok && sid != "" {
+				s.agent.hub.removeSeat(v.(*Seat), "")
+			}
+			w.WriteHeader(http.StatusOK)
 			return
 		default: // no server-initiated stream
 			w.Header().Set("Allow", "POST, DELETE")
@@ -718,31 +794,13 @@ func (s *MCPServer) serveStdio() {
 	dispatchLines(os.Stdin, func(line []byte) { write(s.handle(line, conn)) })
 }
 
-// dispatchLines calls f for each line of r. Tool calls run one after another in the
-// order they came in; everything else (ping, tools/list…) is answered right away.
+// dispatchLines runs requests concurrently; tool workers provide per-tab ordering.
 func dispatchLines(r io.Reader, f func([]byte)) {
-	calls := make(chan []byte, 256)
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for line := range calls {
-			f(line)
-		}
-	}()
 	readLines(r, func(line []byte) {
-		var m struct {
-			Method string `json:"method"`
-		}
-		json.Unmarshal(line, &m)
-		if m.Method == "tools/call" {
-			calls <- line
-			return
-		}
 		wg.Add(1)
 		go func() { defer wg.Done(); f(line) }()
 	})
-	close(calls)
 	wg.Wait()
 }
 
@@ -774,25 +832,51 @@ func probeMCP(u string) bool {
 }
 
 // proxyStdio forwards stdin messages to a running server and writes its answers to stdout.
+// It keeps the MCP session the server hands out on initialize, so this agent stays its own seat
+// (its own #id in the room) instead of merging with the other agents, and ends it on exit.
 func proxyStdio(u string) {
 	log.Printf("%s is already running, forwarding MCP to %s", appName, u)
 	c := http.Client{Timeout: 10 * time.Minute}
-	var wmu sync.Mutex
-	dispatchLines(os.Stdin, func(line []byte) {
-		req, _ := http.NewRequest(http.MethodPost, u, bytes.NewReader(line))
+	var wmu, smu sync.Mutex
+	sid := ""
+	ready := make(chan struct{}) // closed once initialize has been answered (we know the session)
+	var readyOnce sync.Once
+	markReady := func() { readyOnce.Do(func() { close(ready) }) }
+	go func() { time.Sleep(15 * time.Second); markReady() }() // a client that never initializes
+	post := func(method string, body []byte) (*http.Response, error) {
+		req, _ := http.NewRequest(method, u, bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json, text/event-stream")
 		if password() != "" {
 			req.Header.Set("Authorization", "Bearer "+password())
 		}
-		resp, err := c.Do(req)
+		smu.Lock()
+		if sid != "" {
+			req.Header.Set("Mcp-Session-Id", sid)
+		}
+		smu.Unlock()
+		return c.Do(req)
+	}
+	dispatchLines(os.Stdin, func(line []byte) {
+		var m rpcRequest
+		json.Unmarshal(line, &m)
+		if m.Method == "initialize" {
+			defer markReady()
+		} else {
+			<-ready
+		}
+		resp, err := post(http.MethodPost, line)
 		var out []byte
 		if err != nil {
-			var m rpcRequest
-			if json.Unmarshal(line, &m) == nil && len(m.ID) > 0 {
+			if len(m.ID) > 0 {
 				out, _ = json.Marshal(rpcResponse{JSONRPC: "2.0", ID: m.ID, Error: &rpcError{-32603, "server not reachable: " + err.Error()}})
 			}
 		} else {
+			if v := resp.Header.Get("Mcp-Session-Id"); v != "" {
+				smu.Lock()
+				sid = v
+				smu.Unlock()
+			}
 			out, _ = io.ReadAll(resp.Body)
 			resp.Body.Close()
 			if resp.StatusCode != http.StatusOK {
@@ -805,4 +889,12 @@ func proxyStdio(u string) {
 			wmu.Unlock()
 		}
 	})
+	smu.Lock()
+	have := sid != ""
+	smu.Unlock()
+	if have { // stdin closed: the agent quit, take it out of the room
+		if resp, err := post(http.MethodDelete, nil); err == nil {
+			resp.Body.Close()
+		}
+	}
 }

@@ -37,3 +37,11 @@
 #status.ok .ping { display: none; }
 
 kbd { font: 500 11px/1 Inter, sans-serif; padding: 3px 5px; border-radius: 5px; background: rgb(255 255 255 / .08); border: 1px solid rgb(255 255 255 / .08); color: #e4e4e7; }
+
+/* an agent's random #id after its name (opencode#3f9a): there, but quieter than the name */
+.agent-id { opacity: .45; font-weight: 400; }
+
+/* disconnect button next to each coding agent in the room list */
+.agent-kick { display: inline-flex; align-items: center; gap: 4px; border-radius: 9999px; padding: 3px; color: rgb(113 113 122); opacity: .6; transition: all .15s; }
+.agent-kick:hover { opacity: 1; color: rgb(252 165 165); background: rgb(239 68 68 / .12); }
+.agent-kick.armed { opacity: 1; padding: 2px 8px; font-size: 11px; font-weight: 500; color: rgb(252 165 165); background: rgb(239 68 68 / .18); }

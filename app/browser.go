@@ -17,6 +17,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/url"
@@ -62,10 +63,15 @@ type View struct {
 }
 
 type Tab struct {
-	id     string
-	opener string // tab that opened this one, if any
-	ctx    context.Context
-	cancel context.CancelFunc
+	lane       sync.Mutex // serializes single agent operations targeting this tab
+	sessMu     sync.Mutex // guards owner and ownerUntil
+	owner      string     // agent holding an exclusive session on this tab (browser_lock_tab)
+	ownerUntil time.Time
+	gesture    sync.Mutex // held for a whole input tool call, so agents sharing a tab never interleave a click, drag or typing
+	id         string
+	opener     string // tab that opened this one, if any
+	ctx        context.Context
+	cancel     context.CancelFunc
 
 	// guarded by Browser.mu
 	title, url              string // from Chrome's target info
@@ -668,11 +674,136 @@ func (b *Browser) run(f func(t *Tab) error) error {
 	})
 }
 
+// runTab serializes work for one stable tab without blocking work on other tabs.
+func (b *Browser) runTab(tabID string, f func(t *Tab) error) error {
+	b.mu.Lock()
+	var t *Tab
+	for _, candidate := range b.tabs {
+		if candidate.id == tabID {
+			t = candidate
+			break
+		}
+	}
+	b.mu.Unlock()
+	if t == nil {
+		return errors.New("tab not found: " + tabID)
+	}
+	t.lane.Lock()
+	defer t.lane.Unlock()
+	return f(t)
+}
+
+// findTab returns the tab with that id, or the active one when tabID is empty.
+func (b *Browser) findTab(tabID string) *Tab {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if tabID == "" {
+		return b.active
+	}
+	for _, c := range b.tabs {
+		if c.id == tabID {
+			return c
+		}
+	}
+	return nil
+}
+
+// sessionFree reports whether who may act on the tab now (nobody holds a session, it expired, or who holds it).
+// Caller holds t.sessMu.
+func (t *Tab) sessionFree(who string) bool {
+	return t.owner == "" || t.owner == who || time.Now().After(t.ownerUntil)
+}
+
+// claimTab gives who exclusive use of the tab for ttl (a "session": pick a tool, then draw, without another
+// agent changing the page state in between). Others' input calls wait until release or expiry.
+func (b *Browser) claimTab(tabID, who string, ttl time.Duration) error {
+	t := b.findTab(tabID)
+	if t == nil {
+		return errors.New("tab not found")
+	}
+	for end := time.Now().Add(60 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+		t.sessMu.Lock()
+		if t.sessionFree(who) {
+			t.owner, t.ownerUntil = who, time.Now().Add(ttl)
+			t.sessMu.Unlock()
+			return nil
+		}
+		holder := t.owner
+		t.sessMu.Unlock()
+		if time.Now().After(end) {
+			return fmt.Errorf("the tab is in use by %q; try again later", holder)
+		}
+	}
+}
+
+func (b *Browser) releaseTab(tabID, who string) {
+	if t := b.findTab(tabID); t != nil {
+		t.sessMu.Lock()
+		if t.owner == who {
+			t.owner = ""
+		}
+		t.sessMu.Unlock()
+	}
+}
+
+// releaseOwner frees every tab locked by this agent or one of its sub-agents (who/…).
+func (b *Browser) releaseOwner(who string) {
+	b.mu.Lock()
+	tabs := slices.Clone(b.tabs)
+	b.mu.Unlock()
+	for _, t := range tabs {
+		t.sessMu.Lock()
+		if t.owner == who || strings.HasPrefix(t.owner, who+"/") {
+			t.owner = ""
+		}
+		t.sessMu.Unlock()
+	}
+}
+
+// lockGesture waits for any other agent's session on the tab, then takes the tab's gesture lock;
+// it returns the unlock. Input tools hold it for the whole call.
+func (b *Browser) lockGesture(tabID, who string) (func(), error) {
+	t := b.findTab(tabID)
+	if t == nil {
+		return func() {}, nil
+	}
+	for end := time.Now().Add(60 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+		t.sessMu.Lock()
+		free, holder := t.sessionFree(who), t.owner
+		t.sessMu.Unlock()
+		if free {
+			t.gesture.Lock()
+			t.sessMu.Lock()
+			still := t.sessionFree(who)
+			t.sessMu.Unlock()
+			if still {
+				return t.gesture.Unlock, nil
+			}
+			t.gesture.Unlock() // someone claimed the tab while we waited for the lock
+		}
+		if time.Now().After(end) {
+			return nil, fmt.Errorf("the tab is in use by %q (browser_lock_tab); try again later", holder)
+		}
+	}
+}
+
 // busy reports whether the active tab is still loading.
 func (b *Browser) busy() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.active != nil && b.active.loading
+}
+
+// busyTab reports whether a specific tab is still loading without changing the active tab.
+func (b *Browser) busyTab(tabID string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, t := range b.tabs {
+		if t.id == tabID {
+			return t.loading
+		}
+	}
+	return false
 }
 
 func (b *Browser) viewSize() View {
@@ -775,6 +906,10 @@ func (b *Browser) attach(id, openerID string, opened bool) (*Tab, error) {
 	b.mu.Unlock()
 	run := true
 	steps := []func() error{
+		func() error { // a background tab must still behave as focused, so parallel sub-agents can use it
+			_, err := chromedp.Call(ctx, emulation.SetFocusEmulationEnabled, emulation.SetFocusEmulationEnabledParams{Enabled: true})
+			return err
+		},
 		func() error { // console and network, so the agent can see what the page does
 			bufTotal, bufRes := int64(10<<20), int64(2<<20)
 			if _, err := chromedp.Call(ctx, network.Enable, network.EnableParams{MaxTotalBufferSize: &bufTotal, MaxResourceBufferSize: &bufRes}); err != nil {

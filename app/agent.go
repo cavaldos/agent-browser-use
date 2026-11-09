@@ -47,18 +47,41 @@ type Agent struct {
 	b   *Browser
 	opt AgentOptions
 
-	mu     sync.Mutex // one tool call at a time
-	x, y   float64    // cursor position, 0..1 of the screen
-	opened bool       // viewer already opened once
+	mu       sync.Mutex // serializes this worker's calls
+	tabID    string     // empty means the active tab (legacy behavior)
+	workerID string     // the agent's display name (empty: the default agent)
+	cursorID string     // id of this agent's cursor on everyone's screen
+	x, y     float64    // cursor position, 0..1 of the screen
+	opened   bool       // viewer already opened once
 
 	last, lastKey string          // the outline the model saw last, and which tab/URL it was for
 	marks         map[string]mark // named baselines for browser_snapshot_diff
 	dlSeen        int             // downloads the agent has been told about
+	workersMu     sync.Mutex
+	workers       map[string]*Agent
+}
+
+// worker returns the agent identity for (name, tab): every sub-agent gets its own cursor,
+// refs and snapshots, even when several of them use the same tab.
+func (a *Agent) worker(name, tabID string) *Agent {
+	if name == "" && tabID == "" {
+		return a
+	}
+	key := name + "@" + tabID
+	a.workersMu.Lock()
+	defer a.workersMu.Unlock()
+	if w := a.workers[key]; w != nil {
+		return w
+	}
+	w := &Agent{hub: a.hub, b: a.b, opt: a.opt, tabID: tabID, workerID: cmpOr(name, "agent:"+tabID), cursorID: "agent:" + key, x: 0.5, y: 0.5, workers: a.workers}
+	a.workers[key] = w
+	return w
 }
 
 func newAgent(h *Hub, b *Browser, opt AgentOptions) *Agent {
-	a := &Agent{hub: h, b: b, opt: opt, x: 0.5, y: 0.5}
+	a := &Agent{hub: h, b: b, opt: opt, x: 0.5, y: 0.5, workers: map[string]*Agent{}}
 	go h.watchAgentIdle(opt.Idle)
+	go h.watchSeats()
 	return a
 }
 
@@ -70,7 +93,6 @@ func (h *Hub) agentJoin() int {
 	defer h.mu.Unlock()
 	if !h.agentOn {
 		h.agentOn = true
-		h.broadcast(Msg{Type: "user_join", User: &h.agent.user}, nil)
 	}
 	h.agentLast = time.Now()
 	h.agentBusy = true
@@ -192,6 +214,9 @@ func (a *Agent) act(f func(t *Tab) error) error {
 	if err := a.hub.agentTake(); err != nil {
 		return err
 	}
+	if a.tabID != "" {
+		return a.b.runTab(a.tabID, f)
+	}
 	return a.b.run(f)
 }
 
@@ -199,6 +224,9 @@ func (a *Agent) act(f func(t *Tab) error) error {
 // Reads skip the input queue, so the agent watching or snapshotting the page
 // never makes a person's clicks and keys wait.
 func (a *Agent) look(f func(t *Tab) error) error {
+	if a.tabID != "" {
+		return a.b.runTab(a.tabID, f)
+	}
 	a.b.mu.Lock()
 	t := a.b.active
 	a.b.mu.Unlock()
@@ -266,13 +294,20 @@ func (a *Agent) idleFor() (time.Duration, error) {
 
 // settle waits until the page has reacted to an action: done loading, and still for a moment.
 // It returns as soon as that happens, so a quick page costs ~200ms instead of a fixed wait.
+func (a *Agent) tabBusy() bool {
+	if a.tabID != "" {
+		return a.b.busyTab(a.tabID)
+	}
+	return a.b.busy()
+}
+
 func (a *Agent) settle(max time.Duration) {
 	const still = 150 * time.Millisecond
 	time.Sleep(50 * time.Millisecond) // let a navigation or a new tab start
 	end := time.Now().Add(max)
 	var giveUp time.Time // some pages never stop animating: don't wait for them forever
 	for time.Now().Before(end) {
-		if a.b.busy() {
+		if a.tabBusy() {
 			giveUp = time.Time{}
 			time.Sleep(50 * time.Millisecond)
 			continue
@@ -319,7 +354,7 @@ func (a *Agent) WaitForChange(seconds float64, ref, selector string) (bool, erro
 			return false, nil
 		}
 		time.Sleep(40 * time.Millisecond)
-		if a.b.busy() {
+		if a.tabBusy() {
 			break // a new page is loading
 		}
 		err := a.look(func(t *Tab) error {
@@ -382,7 +417,7 @@ func (bx box) center() (float64, float64) {
 
 // announce puts a caption (and an outline, if bx is given) on everyone's screen and logs the step in the chat.
 func (a *Agent) announce(icon, text string, bx *box) {
-	m := Msg{Type: "agent", Act: "step", Text: text}
+	m := Msg{Type: "agent", Act: "step", Text: text, TabID: a.tabID, WorkerID: a.workerID}
 	if bx != nil {
 		m.Rect = bx.rect()
 	}
@@ -432,7 +467,9 @@ func (a *Agent) mouse(typ input.DispatchMouseEventType, x, y float64, btn input.
 		p.Button = input.MouseButtonNone
 	}
 	return a.act(func(t *Tab) error {
-		_, err := chromedp.Call(t.ctx, input.DispatchMouseEvent, p)
+		ctx, cancel := inputCtx(t)
+		defer cancel()
+		_, err := chromedp.Call(ctx, input.DispatchMouseEvent, p)
 		return err
 	})
 }
@@ -458,7 +495,7 @@ func (a *Agent) moveTo(x, y float64, held input.MouseButton, buttons int64) erro
 			return err
 		}
 		a.x, a.y = cx, cy
-		a.hub.agentSend(Msg{Type: "cursor", ID: agentUser.ID, X: cx, Y: cy, Area: "b"})
+		a.hub.agentSend(Msg{Type: "cursor", ID: cmpOr(a.cursorID, agentUser.ID), X: cx, Y: cy, Area: "b", TabID: a.tabID, WorkerID: a.workerID})
 		if i < steps {
 			a.pause(18 * time.Millisecond)
 		}
@@ -481,7 +518,7 @@ func (a *Agent) clickAt(button string, count int) error {
 	if !ok {
 		mb = mouseButtons["left"]
 	}
-	a.hub.agentSend(Msg{Type: "agent", Act: "click", X: a.x, Y: a.y})
+	a.hub.agentSend(Msg{Type: "agent", Act: "click", X: a.x, Y: a.y, TabID: a.tabID, WorkerID: a.workerID})
 	for c := 1; c <= count; c++ {
 		if err := a.mouse(input.DispatchMouseEventTypeMousePressed, a.x, a.y, mb.b, mb.mask, int64(c)); err != nil {
 			return err
@@ -582,10 +619,12 @@ func (a *Agent) pressKey(k *kb.Key, mods int64) error {
 	up := input.DispatchKeyEventParams{Type: input.DispatchKeyEventTypeKeyUp, Key: k.Key, Code: k.Code, Modifiers: mods,
 		WindowsVirtualKeyCode: k.Windows, NativeVirtualKeyCode: k.Native}
 	return a.act(func(t *Tab) error {
-		if _, err := chromedp.Call(t.ctx, input.DispatchKeyEvent, down); err != nil {
+		ctx, cancel := inputCtx(t)
+		defer cancel()
+		if _, err := chromedp.Call(ctx, input.DispatchKeyEvent, down); err != nil {
 			return err
 		}
-		_, err := chromedp.Call(t.ctx, input.DispatchKeyEvent, up)
+		_, err := chromedp.Call(ctx, input.DispatchKeyEvent, up)
 		return err
 	})
 }
@@ -595,7 +634,9 @@ func (a *Agent) typeText(s string) error {
 	runes := []rune(s)
 	if a.opt.Speed == 0 || len(runes) > 400 {
 		return a.act(func(t *Tab) error {
-			_, err := chromedp.Call(t.ctx, input.InsertText, input.InsertTextParams{Text: s})
+			ctx, cancel := inputCtx(t)
+			defer cancel()
+			_, err := chromedp.Call(ctx, input.InsertText, input.InsertTextParams{Text: s})
 			return err
 		})
 	}
@@ -609,7 +650,9 @@ func (a *Agent) typeText(s string) error {
 			err = a.pressKey(k, mods)
 		} else {
 			err = a.act(func(t *Tab) error {
-				_, err := chromedp.Call(t.ctx, input.InsertText, input.InsertTextParams{Text: string(r)})
+				ctx, cancel := inputCtx(t)
+				defer cancel()
+				_, err := chromedp.Call(ctx, input.InsertText, input.InsertTextParams{Text: string(r)})
 				return err
 			})
 		}
@@ -678,8 +721,8 @@ func (a *Agent) Reload() error {
 }
 
 // Click returns a note when another element sits on top of the target.
-func (a *Agent) Click(ref, element, button string, double bool) (string, error) {
-	bx, err := a.locate(ref)
+func (a *Agent) Click(ref, element, button string, double bool, px, py *float64) (string, error) {
+	bx, err := a.locateOrPoint(ref, px, py)
 	if err != nil {
 		return "", err
 	}
@@ -838,7 +881,7 @@ func (a *Agent) PressKey(combo string) error {
 		return err
 	}
 	a.announce("⌨️", "Press "+combo, nil)
-	a.hub.agentSend(Msg{Type: "agent", Act: "key", Text: combo})
+	a.hub.agentSend(Msg{Type: "agent", Act: "key", Text: combo, TabID: a.tabID, WorkerID: a.workerID})
 	if err := a.pressKey(k, mods); err != nil {
 		return err
 	}
@@ -860,7 +903,7 @@ func (a *Agent) SelectOption(ref, element string, values []string) ([]string, er
 		return nil, err
 	}
 	a.pause(200 * time.Millisecond)
-	a.hub.agentSend(Msg{Type: "agent", Act: "click", X: a.x, Y: a.y})
+	a.hub.agentSend(Msg{Type: "agent", Act: "click", X: a.x, Y: a.y, TabID: a.tabID, WorkerID: a.workerID})
 	var picked []string
 	err = a.act(func(t *Tab) error {
 		vals, _ := json.Marshal(values)
@@ -919,7 +962,9 @@ func (a *Agent) Scroll(direction string, amount float64, ref, element string) er
 		p := wheelParams{Type: string(input.DispatchMouseEventTypeMouseWheel), X: px, Y: py,
 			DeltaX: dx * amount / float64(steps), DeltaY: dy * amount / float64(steps)}
 		if err := a.act(func(t *Tab) error {
-			_, err := chromedp.Call(t.ctx, dispatchWheel, p)
+			ctx, cancel := inputCtx(t)
+			defer cancel()
+			_, err := chromedp.Call(ctx, dispatchWheel, p)
 			return err
 		}); err != nil {
 			return err
@@ -937,8 +982,20 @@ func cmpOr(s, def string) string {
 	return s
 }
 
-func (a *Agent) Drag(startRef, startEl, endRef, endEl string) error {
-	from, err := a.locate(startRef)
+// locateOrPoint finds an element by ref, or a bare point given in page pixels (for canvases).
+func (a *Agent) locateOrPoint(ref string, px, py *float64) (box, error) {
+	if ref == "" && px != nil && py != nil {
+		v := a.b.viewSize()
+		if v.Width <= 0 || v.Height <= 0 {
+			return box{}, errors.New("the page has no size yet")
+		}
+		return box{X: *px, Y: *py, CX: *px, CY: *py, VW: float64(v.Width), VH: float64(v.Height), Label: fmt.Sprintf("point (%.0f, %.0f)", *px, *py)}, nil
+	}
+	return a.locate(ref)
+}
+
+func (a *Agent) Drag(startRef, startEl, endRef, endEl string, sx, sy, ex, ey *float64) error {
+	from, err := a.locateOrPoint(startRef, sx, sy)
 	if err != nil {
 		return err
 	}
@@ -951,7 +1008,7 @@ func (a *Agent) Drag(startRef, startEl, endRef, endEl string) error {
 	if err := a.mouse(input.DispatchMouseEventTypeMousePressed, a.x, a.y, input.MouseButtonLeft, 1, 1); err != nil {
 		return err
 	}
-	to, err := a.locate(endRef)
+	to, err := a.locateOrPoint(endRef, ex, ey)
 	if err != nil {
 		a.mouse(input.DispatchMouseEventTypeMouseReleased, a.x, a.y, input.MouseButtonLeft, 0, 1)
 		return err
@@ -1056,12 +1113,12 @@ func (a *Agent) Evaluate(fn, ref string) (string, error) {
 }
 
 func (a *Agent) Say(text, who string) {
-	a.hub.agentSend(Msg{Type: "agent", Act: "say", Text: text})
+	a.hub.agentSend(Msg{Type: "agent", Act: "say", Text: text, TabID: a.tabID, WorkerID: a.workerID})
 	a.hub.agentChat(who, text)
 }
 
 // Tabs lists, opens, selects or closes tabs.
-func (a *Agent) Tabs(action string, index int, rawURL string) (string, error) {
+func (a *Agent) Tabs(action string, index int, rawURL, tabID string, background bool) (string, error) {
 	tabs, _, _, _ := a.b.State()
 	pick := func() (TabInfo, error) {
 		if index < 0 || index >= len(tabs) {
@@ -1074,6 +1131,8 @@ func (a *Agent) Tabs(action string, index int, rawURL string) (string, error) {
 		return a.tabList(), nil
 	case "new":
 		u := cmpOr(rawURL, a.b.opt.StartURL)
+		_, prior, _, _ := a.b.State()
+		newID := ""
 		a.announce("➕", "Open a new tab: "+u, nil)
 		if err := a.hub.agentTake(); err != nil {
 			return "", err
@@ -1085,14 +1144,35 @@ func (a *Agent) Tabs(action string, index int, rawURL string) (string, error) {
 			if full {
 				return fmt.Errorf("tab limit (%d) reached, close a tab first", a.b.opt.MaxTabs)
 			}
-			_, err := a.b.openTab(u)
+			t, err := a.b.openTab(u)
+			if t != nil {
+				newID = t.id
+			}
+			if background && prior != "" {
+				a.b.ActivateTab(prior) // sub-agents work in their own tab; the viewer keeps its tab
+			}
 			return err
 		})
 		if err != nil {
 			return "", err
 		}
-		a.settle(20 * time.Second)
+		if newID != "" {
+			a.worker("", newID).settle(20 * time.Second)
+		} else {
+			a.settle(20 * time.Second)
+		}
+		if background {
+			return fmt.Sprintf("Opened tab tabId=%s. Pass this tabId to every tool call of the sub-agent that owns it.\n\n%s", newID, a.tabList()), nil
+		}
 	case "select":
+		if tabID != "" {
+			for i, candidate := range tabs {
+				if candidate.ID == tabID {
+					index = i
+					break
+				}
+			}
+		}
 		t, err := pick()
 		if err != nil {
 			return "", err
@@ -1104,6 +1184,14 @@ func (a *Agent) Tabs(action string, index int, rawURL string) (string, error) {
 		a.b.ActivateTab(t.ID)
 		a.settle(2 * time.Second)
 	case "close":
+		if tabID != "" {
+			for i, candidate := range tabs {
+				if candidate.ID == tabID {
+					index = i
+					break
+				}
+			}
+		}
 		if index < 0 { // the current one
 			_, active, _, _ := a.b.State()
 			for i, t := range tabs {
@@ -1121,6 +1209,13 @@ func (a *Agent) Tabs(action string, index int, rawURL string) (string, error) {
 			return "", err
 		}
 		a.b.call(func() error { a.b.closeTab(t.ID); return nil })
+		a.workersMu.Lock()
+		for k := range a.workers {
+			if strings.HasSuffix(k, "@"+t.ID) {
+				delete(a.workers, k)
+			}
+		}
+		a.workersMu.Unlock()
 		a.settle(2 * time.Second)
 	default:
 		return "", fmt.Errorf("action must be list, new, select or close, not %q", action)
@@ -1137,7 +1232,7 @@ func (a *Agent) tabList() string {
 		if t.ID == active {
 			cur = " (current)"
 		}
-		fmt.Fprintf(&s, "- %d:%s [%s](%s)\n", i, cur, t.Title, t.URL)
+		fmt.Fprintf(&s, "- %d:%s [%s](%s) tabId=%s\n", i, cur, t.Title, t.URL, t.ID)
 	}
 	return s.String()
 }
@@ -1160,6 +1255,9 @@ func (a *Agent) snapshot(diff bool) (string, error) {
 		return "", err
 	}
 	tabs, active, _, _ := a.b.State()
+	if a.tabID != "" {
+		active = a.tabID
+	}
 	var s strings.Builder
 	key := ""
 	s.WriteString("### Page state\n")

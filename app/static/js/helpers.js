@@ -5,6 +5,17 @@ function initials(name) {
   const p = name.trim().split(/\s+/);
   return ((p[0]?.[0] || "") + (p.length > 1 ? p[p.length - 1][0] : "")).toUpperCase() || "?";
 }
+// setName writes a name into el, with an agent's "#3f9a" id dimmed (opencode#3f9a).
+function setName(el, name, prefix = "") {
+  const i = name.lastIndexOf("#");
+  el.textContent = prefix + (i > 0 ? name.slice(0, i) : name);
+  if (i > 0) {
+    const id = document.createElement("span");
+    id.className = "agent-id";
+    id.textContent = name.slice(i);
+    el.append(id);
+  }
+}
 function avatar(u, size = "h-8 w-8 text-[11px]") {
   const el = document.createElement("div");
   el.className = `grid ${size} shrink-0 select-none place-items-center rounded-full font-semibold text-zinc-950`;

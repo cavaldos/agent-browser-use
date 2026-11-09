@@ -8,6 +8,7 @@ function screenBox() {
 }
 let agentTimer = 0;
 function agentEvent(m) {
+  if (m.tabId && m.tabId !== state.active) return;
   const s = screenBox();
   if (m.act === "click") {
     const el = document.createElement("div");

@@ -42,7 +42,7 @@ https://github.com/user-attachments/assets/19edb4dd-3e3f-45e3-8809-b27a6c31be58
 
 ## Install
 
-macOS / Linux:
+macOS / Linux (Windows: run it inside WSL)
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/cavaldos/agent-browser-use/main/scripts/install.sh | sh

@@ -9,9 +9,9 @@ a web viewer shows the agent's cursor, the element it is acting on, and a log of
 
 ## Demo
 
-<video src="https://github.com/cavaldos/agent-browser-use/raw/refs/heads/main/docs/videodemo.mp4" controls>
-  Your browser does not support the video tag.
-</video>
+[![Demo](docs/images/demo.gif)](docs/videodemo.mp4)
+
+*Click the animation to open the full-quality video.*
 
 ## Screenshots
 

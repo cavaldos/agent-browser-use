@@ -1,14 +1,11 @@
 name: Release
 
 # Runs when a tag vX.Y.Z is pushed (see scripts/release.sh).
+# Publishes raw binaries named agent-browser-use-<os>-<arch>[.exe], the same layout
+# as pitago, so scripts/install.sh can download them from releases/latest/download.
 on:
   push:
-    tags: ['v*']  # format checked in the Resolve version step
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Existing tag to build and publish, e.g. v1.2.3'
-        required: true
+    tags: ['v*']
 
 permissions:
   contents: write
@@ -20,16 +17,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag || github.ref }}
-          fetch-depth: 0
-
-      - name: Resolve version
-        id: version
-        run: |
-          VERSION="${{ inputs.tag || github.ref_name }}"
-          echo "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "bad tag: $VERSION"; exit 1; }
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-go@v5
         with:
@@ -41,35 +28,27 @@ jobs:
 
       - name: Build binaries
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ github.ref_name }}
         run: |
           set -e
           mkdir -p dist
           for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
             os=${target%/*}; arch=${target#*/}
-            name=agent-browser-use_${VERSION}_${os}_${arch}
-            mkdir -p "dist/$name"
+            ext=; [ "$os" = windows ] && ext=.exe
+            out="dist/agent-browser-use-$os-$arch$ext"
             # Embed cloudflared for the target so -tunnel works in the released binary.
             scripts/fetch-cloudflared.sh "$os" "$arch"
-            ext=; [ "$os" = windows ] && ext=.exe
-            GOOS=$os GOARCH=$arch OUT="dist/$name/agent-browser-use$ext" scripts/build.sh
-            cp LICENSE README.md "dist/$name/"
-            if [ "$os" = windows ]; then
-              (cd dist && zip -qr "$name.zip" "$name")
-            else
-              tar -C dist -czf "dist/$name.tar.gz" "$name"
-            fi
-            rm -rf "dist/$name"
+            GOOS=$os GOARCH=$arch OUT="$out" scripts/build.sh
+            # Fail here if the binary is missing, instead of publishing an empty release.
+            test -s "$out"
           done
-          cd dist && shasum -a 256 *.tar.gz *.zip > SHA256SUMS && cat SHA256SUMS
+          ls -la dist
 
       - name: Publish GitHub Release
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          if gh release view "$VERSION" >/dev/null 2>&1; then
-            gh release upload "$VERSION" dist/*.tar.gz dist/*.zip dist/SHA256SUMS --clobber
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/agent-browser-use-* --clobber
           else
-            gh release create "$VERSION" dist/*.tar.gz dist/*.zip dist/SHA256SUMS \
-              --title "$VERSION" --generate-notes --verify-tag
+            gh release create "$GITHUB_REF_NAME" dist/agent-browser-use-* \
+              --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
           fi

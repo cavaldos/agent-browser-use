@@ -198,7 +198,7 @@ $("#importFile").onchange = async (e) => {
 };
 
 // Popovers: one open at a time, a click anywhere else closes them.
-const POPS = ["#helpPop", "#emotePop", "#membersPop"];
+const POPS = ["#helpPop", "#emotePop", "#membersPop", "#tunnelPop"];
 function togglePop(sel, e) {
   e.stopPropagation();
   const show = $(sel).hidden;

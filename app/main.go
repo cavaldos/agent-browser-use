@@ -575,6 +575,9 @@ func main() {
 	fl.DurationVar(&ao.Idle, "agent-idle", 15*time.Second, "give control back (to whoever had it before) after the agent has been idle this long (0 = never)")
 	noMCP := fl.Bool("no-mcp", false, "disable the MCP endpoint /mcp")
 	mcpRemote := fl.Bool("mcp-remote", false, "allow /mcp from other machines (default: this machine only)")
+	tunnelOn := fl.Bool("tunnel", false, "share the web UI on a public https URL (built-in Cloudflare tunnel, no router setup); sets a password if you gave none")
+	tunnelSub := fl.String("subdomain", "", "with -tunnel: name for the public URL (empty = random)")
+	tunnelBackend := fl.String("tunnel-backend", "", "with -tunnel: tunnel backend URL (empty = "+defaultTunnelBackend+")")
 	fl.Parse(args)
 	if fl.NArg() > 0 { // e.g. `make run -p 8080`: make takes -p itself and only "8080" arrives here
 		fmt.Fprintf(os.Stderr, "Unexpected arguments: %s\nFlags start with -, e.g. ./run -p 8080 -pw secret (with make: make run p=8080 pw=secret)\n", strings.Join(fl.Args(), " "))
@@ -605,6 +608,9 @@ func main() {
 		}
 		log.Fatalf("Port %d is busy: %v (use -port)", *port, err)
 	}
+
+	tm := &TunnelManager{port: *port, backend: *tunnelBackend}
+	tunnels = tm
 
 	h := &Hub{clients: map[*Client]bool{}, chat: []ChatMsg{}, dataFile: *data, agent: &Client{user: agentUser}}
 	h.load()
@@ -647,6 +653,7 @@ func main() {
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 	mux.HandleFunc("/ws", h.serveWS)
 	registerStateAPI(mux, mcp)
+	registerTunnelAPI(mux, tm)
 	if !*noMCP {
 		mux.HandleFunc("/mcp", mcp.ServeHTTP(*mcpRemote))
 	}
@@ -658,8 +665,15 @@ func main() {
 	if !*noMCP {
 		fmt.Fprintf(out, "MCP endpoint for AI agents: %s/mcp\n", local)
 	}
-	if authPassword != "" {
+	if password() != "" {
 		fmt.Fprintln(out, "Password protection is on (MCP clients: send \"Authorization: Bearer <password>\")")
+	}
+
+	if *tunnelOn {
+		fmt.Fprintln(out, "Opening public tunnel...")
+		if err := tm.Start(*tunnelSub); err != nil {
+			fmt.Fprintf(out, "Tunnel failed: %v\n(the app keeps running locally)\n", err)
+		}
 	}
 
 	// Close Chrome on the way out, so no process is left running.
@@ -671,6 +685,12 @@ func main() {
 		}
 	}
 	go func() { log.Println(http.Serve(ln, requireAuth(mux))); stop() }()
+	if st := tm.Status(); st.On {
+		fmt.Fprintf(out, "Public URL: %s\n  MCP: %s/mcp\n", st.URL, st.URL)
+		if st.Generated {
+			fmt.Fprintf(out, "  Password (generated; set your own with -pw): %s\n", st.Password)
+		}
+	}
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	go func() { <-sig; stop() }()
@@ -678,6 +698,7 @@ func main() {
 		go func() { mcp.serveStdio(); stop() }() // the MCP client closed stdin: it is done with us
 	}
 	<-quit
+	tm.Stop()
 	if h.browser != nil {
 		h.browser.Close()
 	}

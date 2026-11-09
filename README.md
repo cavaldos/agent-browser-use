@@ -11,13 +11,16 @@ a web viewer shows the agent's cursor, the element it is acting on, and a log of
 
 ## Screenshots
 
-**Watch the agent work.** Its cursor, a caption for every step and a log in the chat, with a one-click *Take over* or *Block agent* whenever you want control.
-
-![The agent is in control: cursor, captions and step log](docs/images/agent-control.png)
-
-**Pick an element and share it.** Select any element on the page, copy its code and give it to your coding agent, or post it in the room chat.
-
-![Picking an element to share with a coding agent](docs/images/pick-element.png)
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/agent-control.png" alt="The agent is in control: cursor, captions and step log"><br><b>Watch the agent work.</b> Its cursor, a caption for every step and a log in the chat, with a one-click <i>Take over</i> or <i>Block agent</i>.</td>
+    <td width="50%"><img src="docs/images/pick-element.png" alt="Picking an element to share with a coding agent"><br><b>Pick an element and share it.</b> Copy its code for your coding agent, or post it in the room chat.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/public-link.png" alt="Public link popover with the link and password to copy"><br><b>Share with a public link.</b> One switch opens a built-in tunnel: copy the link (and password) and send it, no router setup. Switch off and the link stops working.</td>
+    <td width="50%"></td>
+  </tr>
+</table>
 
 ## Features
 
@@ -161,6 +164,8 @@ make run -- -p 8080 -pw mysecret      # or pass any app flags after --
 make run -- -agent-speed 1            # slow the agent's cursor and typing so people can follow
 make run -- -mcp-remote               # allow other machines on your LAN to call /mcp
 make run -- -no-mcp                   # disable /mcp, use only as a shared browser room
+make run -- -tunnel                   # public https URL for friends outside your network (no router setup)
+make run -- -tunnel -subdomain myapp  # choose the name: https://myapp.nport.link
 ./bin/agent-browser-use -h            # all options
 ```
 
@@ -169,6 +174,8 @@ or the first other Chromium-based browser it finds (Chrome, Edge, Brave, Vivaldi
 (`npx @puppeteer/browsers install chrome-headless-shell@stable`) is the lightest choice.
 Each engine gets its own profile folder (e.g. `chrome-profile-brave`). Firefox and Safari
 are not supported: the shared screen needs the Chrome DevTools Protocol.
+
+**Public tunnel.** `-tunnel` embeds `cloudflared` and uses the [nport](https://github.com/tuanngocptn/nport) backend to give you a public `https://….nport.link` URL. If you set no `-pw`, a random password is generated and printed. Run `scripts/fetch-cloudflared.sh` (done automatically by `make build`) so `go build` embeds the binary for your platform; for other platforms: `scripts/fetch-cloudflared.sh linux amd64`.
 
 **Password.** With `-pw`, people get a login page; MCP clients send
 `Authorization: Bearer <password>` (e.g. `claude mcp add --transport http browser http://localhost:3000/mcp --header "Authorization: Bearer mysecret"`).

@@ -13,6 +13,34 @@
           <span class="txt">Connecting…</span>
         </div>
 
+        <!-- Public link: switch the tunnel on/off, copy the link -->
+        <div class="relative">
+          <button id="tunnelBtn" class="flex h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-zinc-400 ring-1 ring-inset ring-white/[.06] transition hover:bg-white/[.06]" title="Share on a public link">
+            <i data-icon="globe" class="h-3.5 w-3.5"></i><span id="tunnelLabel">Share</span>
+          </button>
+          <div id="tunnelPop" class="pop absolute right-0 top-11 z-40 w-80 rounded-xl border border-white/10 bg-zinc-900/95 p-3 shadow-2xl backdrop-blur" hidden>
+            <div class="flex items-center justify-between">
+              <p class="label">Public link</p>
+              <button id="tunnelSwitch" role="switch" aria-checked="false" class="relative h-5 w-9 rounded-full bg-zinc-700 transition aria-checked:bg-emerald-500" title="Turn the public link on or off">
+                <span class="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform" id="tunnelKnob"></span>
+              </button>
+            </div>
+            <p id="tunnelHint" class="mt-1 text-xs text-zinc-400">Off. Turn on to get a link anyone can open, no router setup.</p>
+            <div id="tunnelOn" hidden>
+              <div class="mt-2 flex items-center gap-1.5">
+                <input id="tunnelUrl" readonly class="min-w-0 flex-1 rounded-lg bg-white/[.06] px-2 py-1.5 text-xs text-zinc-200 outline-none ring-1 ring-inset ring-white/10">
+                <button id="tunnelCopy" class="rounded-lg bg-indigo-500 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-indigo-400">Copy</button>
+              </div>
+              <div id="tunnelPwRow" class="mt-2 flex items-center gap-1.5" hidden>
+                <span class="text-xs text-zinc-400">Password</span>
+                <input id="tunnelPw" readonly class="min-w-0 flex-1 rounded-lg bg-white/[.06] px-2 py-1.5 text-xs text-zinc-200 outline-none ring-1 ring-inset ring-white/10">
+                <button id="tunnelPwCopy" class="rounded-lg bg-white/10 px-2.5 py-1.5 text-xs text-zinc-200 hover:bg-white/20">Copy</button>
+              </div>
+              <p class="mt-2 text-[11px] text-zinc-500">Turning it off makes the link stop working.</p>
+            </div>
+          </div>
+        </div>
+
         <!-- People in the room: avatar stack, click for the full list -->
         <div class="relative">
           <button id="membersBtn" class="flex h-9 items-center gap-2 rounded-full py-1 pl-1 pr-2.5 transition hover:bg-white/[.06]" title="People in the room">

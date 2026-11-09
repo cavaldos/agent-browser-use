@@ -5,7 +5,7 @@ const COMPONENTS_READY = (async () => {
   slots.forEach((s, i) => s.replaceWith(document.createRange().createContextualFragment(html[i])));
 })();
 
-const SCRIPTS = ["core", "icons", "helpers", "theme", "join", "socket", "members", "tabs", "toolbar", "screen", "picker", "sound", "emotes", "sidebar", "mentions", "cursors", "agent", "boot"];
+const SCRIPTS = ["core", "icons", "helpers", "theme", "join", "socket", "members", "tabs", "toolbar", "screen", "picker", "sound", "emotes", "sidebar", "tunnel", "mentions", "cursors", "agent", "boot"];
 
 COMPONENTS_READY.then(async () => {
   for (const name of SCRIPTS) {

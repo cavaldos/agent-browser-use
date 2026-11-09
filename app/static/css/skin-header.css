@@ -17,9 +17,9 @@
 #app > .flex-1 > header > div:first-child > span:not(.hud-jp) { color: var(--fg) !important; font-size: 14px; font-weight: 600 !important; letter-spacing: .1em; }
 .hud-jp { margin-left: 8px; color: var(--dim); font-size: 13px; letter-spacing: .18em; }
 #status { border-radius: 99px !important; background: var(--hover) !important; box-shadow: none !important; padding: 4px 10px !important; color: var(--fg-2) !important; }
-#membersBtn { border-radius: 99px !important; color: var(--fg-2) !important; }
+#membersBtn { border-radius: 2px !important; color: var(--fg-2) !important; }
 #membersBtn:hover { background: var(--hover) !important; }
-#sidebarToggle, #themeBtn { border: 1px solid var(--line-soft); border-radius: 8px !important; }
+#sidebarToggle, #themeBtn { border: 1px solid var(--line-soft); border-radius: 2px !important; }
 .hud-body .h-px, .bar-sep { background: var(--line-soft) !important; }
 #themeBtn .i-sun { display: none; }
 :root[data-theme="light"] #themeBtn .i-sun { display: block; }

@@ -30,3 +30,6 @@
 .hud-body *:not(.spinner):not(.tab-spin):not(.ping):not(.dot):not(.agent-ripple),
 .hud-body *:not(.spinner):not(.tab-spin):not(.ping):not(.dot):not(.agent-ripple)::after { border-radius: 2px !important; }
 .tab.active::before, .tab.active::after { display: none !important; }
+
+/* Share button, its switch and every other button: 2px */
+#tunnelBtn, #tunnelSwitch, #tunnelSwitch span, #tunnelPop button, button { border-radius: 2px !important; }

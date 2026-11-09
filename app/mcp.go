@@ -761,8 +761,8 @@ func probeMCP(u string) bool {
 	c := http.Client{Timeout: 2 * time.Second}
 	req, _ := http.NewRequest(http.MethodPost, u, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"ping"}`))
 	req.Header.Set("Content-Type", "application/json")
-	if authPassword != "" {
-		req.Header.Set("Authorization", "Bearer "+authPassword)
+	if password() != "" {
+		req.Header.Set("Authorization", "Bearer "+password())
 	}
 	resp, err := c.Do(req)
 	if err != nil {
@@ -782,8 +782,8 @@ func proxyStdio(u string) {
 		req, _ := http.NewRequest(http.MethodPost, u, bytes.NewReader(line))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json, text/event-stream")
-		if authPassword != "" {
-			req.Header.Set("Authorization", "Bearer "+authPassword)
+		if password() != "" {
+			req.Header.Set("Authorization", "Bearer "+password())
 		}
 		resp, err := c.Do(req)
 		var out []byte

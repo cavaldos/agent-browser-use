@@ -7,6 +7,8 @@ Agent Browser Use is a single Go binary that runs one headless Chrome on your ma
 (Claude Code, Codex, OpenCode, Pi, Cursor, VS Code…) can navigate, read the page, click, type and log in for you, while
 a web viewer shows the agent's cursor, the element it is acting on, and a log of every step.
 
+## Demo
+
 <video src="https://github.com/cavaldos/agent-browser-use/raw/refs/heads/main/docs/videodemo.mp4" controls>
   Your browser does not support the video tag.
 </video>

@@ -35,7 +35,8 @@ jobs:
           for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
             os=${target%/*}; arch=${target#*/}
             ext=; [ "$os" = windows ] && ext=.exe
-            out="dist/agent-browser-use-$os-$arch$ext"
+            # Absolute path: build.sh runs go build inside app/, so a relative OUT would land in app/dist/.
+            out="$PWD/dist/agent-browser-use-$os-$arch$ext"
             # Embed cloudflared for the target so -tunnel works in the released binary.
             scripts/fetch-cloudflared.sh "$os" "$arch"
             GOOS=$os GOARCH=$arch OUT="$out" scripts/build.sh

@@ -9,9 +9,7 @@ a web viewer shows the agent's cursor, the element it is acting on, and a log of
 
 ## Demo
 
-[![Demo](docs/images/demo.gif)](docs/videodemo.mp4)
-
-*Click the animation to open the full-quality video.*
+https://github.com/user-attachments/assets/19edb4dd-3e3f-45e3-8809-b27a6c31be58
 
 ## Screenshots
 

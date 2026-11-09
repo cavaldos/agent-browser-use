@@ -1,0 +1,28 @@
+/* ---------- Sidebar ---------- */
+/* Wide screens: docked next to the room. Visibility waits for the slide to finish so hidden controls can't be tabbed into. */
+#sidebar { transition: margin .3s ease-out, transform .3s ease-out, visibility 0s; }
+#sidebar.collapsed { margin-right: -20rem; visibility: hidden; transition: margin .3s ease-out, transform .3s ease-out, visibility 0s .3s; }
+.drawer-only { display: none !important; }
+
+/* Narrow screens: a drawer that slides over the room */
+@media (max-width: 899px) {
+  #sidebar { position: fixed; top: 0; right: 0; bottom: 0; z-index: 50; width: min(22rem, calc(100vw - 2.5rem)); box-shadow: -24px 0 60px rgb(0 0 0 / .55); }
+  #sidebar.collapsed { margin-right: 0; transform: translateX(100%); }
+  .drawer-only { display: grid !important; }
+}
+@media (min-width: 900px) { #scrim { display: none !important; } }
+
+/* Connection pill: only spell it out when something is wrong (or there's room) */
+#status.ok .txt { display: none; }
+@media (min-width: 768px) { #status.ok .txt { display: inline; } }
+
+/* Control bar: squeeze gracefully when the room is narrow */
+#bar { container-type: inline-size; }
+.emote-toggle { display: none !important; }
+@container (max-width: 940px) {
+  .emote-inline { display: none !important; }
+  .emote-toggle { display: grid !important; }
+}
+@container (max-width: 760px) { .ctrl-status, .block-label { display: none; } .block-btn { padding: 0 10px; } }
+@container (max-width: 640px) { #viewInfo, #pipBtn { display: none !important; } }
+@container (max-width: 480px) { #volume, .help-btn, .bar-sep { display: none !important; } }

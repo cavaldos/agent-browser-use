@@ -28,262 +28,33 @@
     .label { @apply mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500; }
   }
 </style>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/browser.css">
+<link rel="stylesheet" href="css/controls.css">
+<link rel="stylesheet" href="css/layout.css">
+<link rel="stylesheet" href="css/overlays.css">
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/skin-header.css">
+<link rel="stylesheet" href="css/skin-browser.css">
+<link rel="stylesheet" href="css/skin-controls.css">
+<link rel="stylesheet" href="css/skin-sidebar.css">
+<link rel="stylesheet" href="css/skin-overrides.css">
 </head>
 <body class="hud-body h-full overflow-hidden bg-[#0b0b0e] font-sans text-zinc-100 antialiased selection:bg-indigo-500/30">
 
-<!-- ============ Join screen ============ -->
-<div id="login" class="fixed inset-0 grid place-items-center p-4">
-  <div class="pointer-events-none absolute inset-0 overflow-hidden">
-    <div class="glow absolute -top-48 left-1/2 h-[560px] w-[560px] -translate-x-1/2 rounded-full bg-indigo-600/25 blur-3xl"></div>
-    <div class="absolute -bottom-40 -right-24 h-[420px] w-[420px] rounded-full bg-fuchsia-600/15 blur-3xl"></div>
-    <div class="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,.03)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_75%)]"></div>
-  </div>
-  <form id="loginForm" class="rise relative w-full max-w-sm rounded-3xl border border-white/10 bg-zinc-900/70 p-8 shadow-2xl shadow-black/50 backdrop-blur-xl">
-    <div class="mb-8 flex flex-col items-center text-center">
-      <div class="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-indigo-400 to-violet-600 shadow-xl shadow-indigo-600/30">
-        <i data-icon="logo" class="h-7 w-7 text-white"></i>
-      </div>
-      <h1 class="text-2xl font-semibold tracking-tight">Agent Browser Use</h1>
-      <p class="mt-1.5 text-sm text-zinc-400">Watch your AI agent use the web — live.</p>
-    </div>
-    <label for="nameInput" class="label block">Your name</label>
-    <input id="nameInput" class="field h-11" placeholder="e.g. Alex" maxlength="30" autocomplete="nickname" autofocus required>
-    <button class="btn-primary mt-4 h-11 w-full text-[15px]">Join room <i data-icon="arrowRight" class="h-4 w-4"></i></button>
-    <p class="mt-5 text-center text-xs text-zinc-500">Everyone in the room sees every step the agent takes, and can take over the browser at any time.</p>
-  </form>
-</div>
+<!-- Markup lives in components/*.html; loader.js injects each one in place of its placeholder, then loads js/*.js in order. -->
+<div data-include="components/login.html"></div>
 
-<!-- ============ Room ============ -->
 <div id="app" class="flex h-full" hidden>
   <div class="flex min-w-0 flex-1 flex-col">
-
-    <!-- Header -->
-    <header class="flex h-12 shrink-0 items-center gap-3 border-b border-white/[.06] px-3 sm:px-4">
-      <div class="flex items-center gap-2.5">
-        <div class="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-indigo-400 to-violet-600 shadow-md shadow-indigo-600/30">
-          <i data-icon="logo" class="h-4 w-4 text-white"></i>
-        </div>
-        <span class="font-semibold tracking-tight">AGENT BROWSER</span>
-        <span class="hud-jp" aria-hidden="true">エージェントブラウザ</span>
-      </div>
-      <div class="ml-auto flex items-center gap-2">
-        <div id="status" class="flex items-center gap-2 rounded-full bg-white/[.04] px-2.5 py-1 text-xs text-zinc-400 ring-1 ring-inset ring-white/[.06]">
-          <span class="relative flex h-2 w-2"><span class="ping absolute inline-flex h-full w-full rounded-full opacity-60"></span><span class="dot relative inline-flex h-2 w-2 rounded-full bg-amber-400"></span></span>
-          <span class="txt">Connecting…</span>
-        </div>
-
-        <!-- People in the room: avatar stack, click for the full list -->
-        <div class="relative">
-          <button id="membersBtn" class="flex h-9 items-center gap-2 rounded-full py-1 pl-1 pr-2.5 transition hover:bg-white/[.06]" title="People in the room">
-            <span id="members" class="flex items-center -space-x-1"></span>
-            <span class="flex items-center gap-1 text-xs font-medium tabular-nums text-zinc-400"><i data-icon="user" class="h-3.5 w-3.5"></i><span id="memberCount">0</span></span>
-          </button>
-          <div id="membersPop" class="pop absolute right-0 top-11 z-40 w-64 rounded-xl border border-white/10 bg-zinc-900/95 p-2 shadow-2xl backdrop-blur" hidden>
-            <p class="label px-2 pt-1">In the room</p>
-            <ul id="memberList" class="max-h-72 space-y-0.5 overflow-y-auto"></ul>
-          </div>
-        </div>
-
-        <div class="h-5 w-px bg-white/[.08]"></div>
-        <button id="themeBtn" class="icon-btn" title="Toggle light / dark mode"><i data-icon="moon" class="i-moon h-[18px] w-[18px]"></i><i data-icon="sun" class="i-sun h-[18px] w-[18px]"></i></button>
-        <button id="sidebarToggle" class="icon-btn relative" title="Chat & settings">
-          <i data-icon="panel" class="h-[18px] w-[18px]"></i>
-          <span id="unread" class="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-indigo-500 px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-[#0b0b0e]" hidden></span>
-        </button>
-      </div>
-    </header>
-
-    <!-- Shared screen -->
-    <section id="stage" class="stage-bg relative min-h-0 flex-1 overflow-hidden">
-      <div id="window" class="browser-window">
-        <div id="tabstrip">
-          <div id="tablist"></div>
-          <button id="newTabBtn" class="newtab" title="New tab (Alt+T)"><i data-icon="plus" class="h-4 w-4"></i></button>
-        </div>
-        <div id="toolbar">
-          <button id="backBtn" class="icon-btn h-8 w-8 rounded-full" title="Back (Alt+←)" disabled><i data-icon="back" class="h-[18px] w-[18px]"></i></button>
-          <button id="fwdBtn" class="icon-btn h-8 w-8 rounded-full" title="Forward (Alt+→)" disabled><i data-icon="forward" class="h-[18px] w-[18px]"></i></button>
-          <button id="reloadBtn" class="icon-btn h-8 w-8 rounded-full" title="Reload (Ctrl+R)"><i data-icon="reload" class="h-[16px] w-[16px]"></i></button>
-          <form id="urlForm" class="omnibox">
-            <span id="urlIcon" class="grid h-6 w-6 shrink-0 place-items-center rounded-full text-zinc-400"></span>
-            <input id="urlInput" placeholder="Search Google or type a URL" autocomplete="off" spellcheck="false">
-          </form>
-        </div>
-        <div id="viewport">
-          <canvas id="screen" width="1280" height="720"></canvas>
-          <textarea id="kbd" aria-hidden="true" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
-          <div id="loading" class="absolute inset-0 grid place-items-center bg-[#26262b]">
-            <div class="flex flex-col items-center gap-3 text-sm text-zinc-400">
-              <div class="spinner h-8 w-8 rounded-full border-2 border-white/10 border-t-indigo-400"></div>
-              <span>Connecting to the shared browser…</span>
-            </div>
-          </div>
-          <div id="paused" class="absolute inset-0 grid place-items-center bg-black/60 backdrop-blur-sm" hidden>
-            <button id="resumeBtn" class="grid h-16 w-16 place-items-center rounded-full bg-white/10 text-white ring-1 ring-white/20 transition hover:scale-105 hover:bg-white/20"><i data-icon="play" class="ml-1 h-7 w-7"></i></button>
-          </div>
-        </div>
-      </div>
-
-      <div id="emoteLayer" class="pointer-events-none absolute inset-0 overflow-hidden"></div>
-      <div id="agentLayer" class="pointer-events-none absolute inset-0 z-10 overflow-hidden">
-        <div id="agentBox" class="agent-box"></div>
-        <div id="agentCaption" class="agent-caption"><span class="bot">🤖</span><span class="txt"></span></div>
-      </div>
-      <div id="cursors" class="pointer-events-none absolute inset-0 z-10 overflow-hidden"></div>
-      <div id="lockHint" class="pointer-events-none absolute bottom-4 left-1/2 w-max max-w-[90%] text-center rounded-full border border-white/10 bg-zinc-900/90 px-4 py-2 text-xs text-zinc-300 shadow-xl backdrop-blur"></div>
-      <div id="toasts" class="pointer-events-none absolute inset-x-4 bottom-16 z-20 flex flex-col items-center gap-2"></div>
-    </section>
-
-    <!-- Control bar -->
-    <div class="shrink-0 border-t border-white/[.06] bg-[#0f0f12]">
-      <div id="bar" class="flex h-14 items-center gap-3 px-3 sm:px-4">
-        <div class="flex flex-1 items-center gap-1">
-          <div class="relative">
-            <button id="helpBtn" class="icon-btn help-btn" title="Shortcuts"><i data-icon="help" class="h-[18px] w-[18px]"></i></button>
-            <div id="helpPop" class="pop absolute bottom-12 left-0 z-40 w-72 rounded-xl border border-white/10 bg-zinc-900/95 p-4 text-[13px] shadow-2xl backdrop-blur" hidden>
-              <p class="label">Shortcuts (while the screen is focused)</p>
-              <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-zinc-300">
-                <dt><kbd>Alt</kbd>+<kbd>T</kbd></dt><dd>New tab</dd>
-                <dt><kbd>Alt</kbd>+<kbd>W</kbd></dt><dd>Close tab</dd>
-                <dt><kbd>Alt</kbd>+<kbd>1–9</kbd></dt><dd>Switch tab</dd>
-                <dt><kbd>Ctrl</kbd>+<kbd>L</kbd></dt><dd>Address bar</dd>
-                <dt><kbd>Ctrl</kbd>+<kbd>R</kbd></dt><dd>Reload</dd>
-                <dt><kbd>Alt</kbd>+<kbd>←</kbd> <kbd>→</kbd></dt><dd>Back / forward</dd>
-                <dt>Middle-click</dt><dd>Close tab / open link in background</dd>
-              </dl>
-            </div>
-          </div>
-          <span id="viewInfo" class="hidden text-xs tabular-nums text-zinc-500 sm:inline"></span>
-        </div>
-
-        <div class="flex items-center gap-2 sm:gap-3">
-          <!-- Who drives the shared browser: shows the state and the action in one button -->
-          <button id="ctrlBtn" class="ctrl-btn free">
-            <span class="ctrl-icon"></span>
-            <span class="ctrl-status"></span>
-            <span class="ctrl-action">Take control</span>
-          </button>
-          <!-- The agent takes control by itself when it acts; this stops it until clicked again -->
-          <button id="blockBtn" class="block-btn">
-            <span class="block-icon"></span>
-            <span class="block-label">Block agent</span>
-          </button>
-          <div class="bar-sep h-6 w-px bg-white/[.08]"></div>
-          <button id="playBtn" class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/[.08] text-zinc-100 ring-1 ring-white/10 transition hover:bg-white/15 active:scale-95" title="Pause stream"></button>
-          <div class="flex items-center gap-1">
-            <button id="soundBtn" class="icon-btn" title="Mute"></button>
-            <input id="volume" type="range" min="0" max="1" step="0.01" value="0.8" class="range w-20 sm:w-28" title="Volume">
-          </div>
-          <div class="bar-sep h-6 w-px bg-white/[.08]"></div>
-          <button id="pipBtn" class="icon-btn" title="Picture-in-picture" hidden><i data-icon="pip" class="h-[18px] w-[18px]"></i></button>
-          <button id="fullBtn" class="icon-btn" title="Fullscreen"><i data-icon="expand" class="h-[18px] w-[18px]"></i></button>
-        </div>
-
-        <div class="flex flex-1 items-center justify-end">
-          <div id="emoteList" class="emote-inline flex items-center gap-0.5"></div>
-          <div class="relative">
-            <button id="emoteToggle" class="emote-toggle emote-btn" title="Reactions">😀</button>
-            <div id="emotePop" class="pop absolute bottom-12 right-0 z-40 grid grid-cols-4 gap-1 rounded-xl border border-white/10 bg-zinc-900/95 p-2 shadow-2xl backdrop-blur" hidden></div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <div data-include="components/header.html"></div>
+    <div data-include="components/stage.html"></div>
+    <div data-include="components/controlbar.html"></div>
   </div>
-
-  <!-- Sidebar (a docked panel on wide screens, a drawer over the room on narrow ones) -->
-  <div id="scrim" class="fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px] fade-in" hidden></div>
-  <aside id="sidebar" class="flex w-80 shrink-0 flex-col border-l border-white/[.06] bg-[#0f0f12]">
-    <div class="flex h-12 shrink-0 items-center gap-2 border-b border-white/[.06] px-3">
-      <div class="flex flex-1 rounded-lg bg-white/[.04] p-1 ring-1 ring-inset ring-white/[.06]">
-        <button data-pane="chat" class="side-tab active"><i data-icon="chat" class="h-3.5 w-3.5"></i>Chat</button>
-        <button data-pane="settings" class="side-tab"><i data-icon="settings" class="h-3.5 w-3.5"></i>Settings</button>
-      </div>
-      <button id="sidebarClose" class="icon-btn drawer-only h-8 w-8" title="Close"><i data-icon="x" class="h-4 w-4"></i></button>
-    </div>
-
-    <div id="chatPane" class="flex min-h-0 flex-1 flex-col">
-      <div id="chatEmpty" class="flex flex-1 flex-col items-center justify-center gap-1 px-8 text-center">
-        <div class="mb-2 grid h-12 w-12 place-items-center rounded-2xl bg-white/[.04] text-zinc-400 ring-1 ring-inset ring-white/[.06]"><i data-icon="chat" class="h-5 w-5"></i></div>
-        <p class="text-sm font-medium text-zinc-300">No messages yet</p>
-        <p class="text-xs text-zinc-500">Say hi to the room 👋</p>
-      </div>
-      <div id="messages" class="flex-1 overflow-y-auto px-3 py-4" hidden></div>
-      <form id="chatForm" class="shrink-0 p-3">
-        <div class="flex items-center gap-1 rounded-xl border border-white/[.08] bg-zinc-900/80 pl-3.5 pr-1 transition focus-within:border-indigo-400/50 focus-within:ring-4 focus-within:ring-indigo-500/10">
-          <input id="chatInput" class="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-zinc-500" placeholder="Message the room…" maxlength="1000" autocomplete="off">
-          <button class="icon-btn h-8 w-8 text-indigo-300 hover:text-indigo-200" title="Send"><i data-icon="send" class="h-4 w-4"></i></button>
-        </div>
-      </form>
-    </div>
-
-    <div id="settingsPane" class="flex-1 space-y-6 overflow-y-auto p-4" hidden>
-      <section>
-        <p class="label">You</p>
-        <div class="flex items-center gap-3 rounded-xl border border-white/[.06] bg-white/[.02] p-3">
-          <div id="meAvatar"></div>
-          <div class="min-w-0 flex-1"><p id="meName" class="truncate text-sm font-medium"></p><p class="text-xs text-zinc-500">In this room</p></div>
-          <button id="leaveBtn" class="btn-ghost h-8 px-3 text-xs">Leave</button>
-        </div>
-      </section>
-
-      <section>
-        <p class="label">Shared screen <span class="normal-case tracking-normal text-zinc-600">· applies to everyone</span></p>
-        <div class="space-y-3">
-          <label class="block text-[13px] text-zinc-300">Resolution
-            <select id="resSelect" class="select mt-1.5">
-              <option value="1024x576">1024 × 576</option>
-              <option value="1280x720">1280 × 720 (HD)</option>
-              <option value="1600x900">1600 × 900</option>
-              <option value="1920x1080">1920 × 1080 (Full HD)</option>
-            </select>
-          </label>
-          <label class="block text-[13px] text-zinc-300">Image quality
-            <select id="qualSelect" class="select mt-1.5">
-              <option value="40">Low · least bandwidth</option>
-              <option value="60">Balanced</option>
-              <option value="75">High</option>
-              <option value="90">Best</option>
-            </select>
-          </label>
-          <p class="text-xs text-zinc-500">Only the person in control can change these.</p>
-        </div>
-      </section>
-
-      <section>
-        <p class="label">Saved logins <span class="normal-case tracking-normal text-zinc-600">· cookies &amp; sessions</span></p>
-        <div class="space-y-3">
-          <p class="text-xs text-zinc-500">Log in to a site in the browser, then save that session here so you can export it.</p>
-          <form id="saveStateForm" class="flex gap-2">
-            <input id="saveStateName" class="h-8 min-w-0 flex-1 rounded-lg border border-white/[.08] bg-zinc-900/80 px-2.5 text-[13px] outline-none placeholder:text-zinc-500 focus:border-indigo-400/50" placeholder="Name, e.g. github" maxlength="64" autocomplete="off">
-            <button class="btn-ghost h-8 shrink-0 px-3 text-xs"><i data-icon="plus" class="h-3.5 w-3.5"></i>Save current</button>
-          </form>
-          <div id="stateList" class="space-y-2"></div>
-          <div class="flex gap-2">
-            <button id="exportAllBtn" class="btn-ghost h-8 flex-1 px-3 text-xs"><i data-icon="download" class="h-3.5 w-3.5"></i>Export all</button>
-            <button id="importBtn" class="btn-ghost h-8 flex-1 px-3 text-xs"><i data-icon="upload" class="h-3.5 w-3.5"></i>Import</button>
-            <input id="importFile" type="file" accept="application/json,.json" hidden>
-          </div>
-          <p class="text-xs text-amber-400/80">Exported files contain login tokens — anyone with the file can sign in as you. Keep them private and delete when done.</p>
-        </div>
-      </section>
-
-      <section>
-        <p class="label">This device</p>
-        <div class="space-y-4">
-          <label class="block text-[13px] text-zinc-300">
-            <span class="flex justify-between">Scroll speed <span id="scrollVal" class="tabular-nums text-zinc-500"></span></span>
-            <input id="scrollSpeed" type="range" min="0.25" max="3" step="0.25" class="range mt-2.5 w-full">
-          </label>
-          <label class="toggle-row"><span>Show other people’s cursors</span><input id="optCursors" type="checkbox" class="toggle"></label>
-          <label class="toggle-row"><span>Show emoji reactions</span><input id="optEmotes" type="checkbox" class="toggle"></label>
-        </div>
-      </section>
-    </div>
-  </aside>
+  <div data-include="components/sidebar.html"></div>
 </div>
 
 <video id="pipVideo" muted playsinline style="position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;left:0;top:0"></video>
-<script src="app.js"></script>
+<script src="loader.js"></script>
 </body>
 </html>

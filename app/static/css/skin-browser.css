@@ -1,0 +1,32 @@
+/* Stage: plain background, no grid / scanlines */
+.stage-bg {
+  background-color: var(--bg) !important;
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px) !important;
+  background-size: 24px 24px !important;
+}
+
+.browser-window {
+  top: calc(50% + 10px); left: 50%; width: min(88%, 1180px); max-height: calc(100% - 44px);
+  border-radius: 10px !important; background: var(--panel) !important;
+  box-shadow: 0 0 0 1px var(--line), 0 24px 60px var(--shadow) !important;
+}
+#tabstrip, #toolbar { background: var(--panel-hi) !important; }
+#tabstrip { height: 36px; padding-top: 4px; border-bottom: 1px solid var(--line-soft); border-radius: 10px 10px 0 0 !important; }
+#toolbar { height: 44px; border-bottom: 1px solid var(--line) !important; background: var(--panel) !important; }
+.tab { border-radius: 8px 8px 0 0 !important; font-size: 12px; color: var(--dim); }
+.tab:hover { color: var(--fg); }
+.tab.active { background: var(--panel) !important; color: var(--fg); }
+.tab.active::before { background: radial-gradient(circle at 0 0, transparent 9px, var(--panel) 9.5px); display: block; }
+.tab.active::after { background: radial-gradient(circle at 100% 0, transparent 9px, var(--panel) 9.5px); display: block; }
+.tab:hover:not(.active) .tab-bg { background: var(--hover); }
+.tab .sep { background: var(--line); }
+.tab-btn { color: var(--dim); } .tab-btn:hover { background: var(--hover); color: var(--fg); }
+.newtab { color: var(--dim); } .newtab:hover { background: var(--hover); color: var(--fg); }
+.omnibox { border-radius: 99px !important; background: var(--field) !important; border: 1px solid var(--line-soft); }
+.omnibox:hover { background: var(--field); border-color: var(--line); }
+.omnibox:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); background: var(--field); }
+#urlInput { font-size: 13px; color: var(--fg); } #urlInput::placeholder { color: var(--dim); } #urlInput .host { color: var(--fg); }
+#urlIcon { color: var(--dim) !important; }
+#loading { background: var(--panel) !important; }
+#viewport { background: #fff !important; }
+kbd { background: var(--hover); border-color: var(--line-soft); color: var(--fg); }

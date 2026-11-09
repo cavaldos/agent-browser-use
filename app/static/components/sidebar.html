@@ -1,0 +1,90 @@
+  <!-- Sidebar (a docked panel on wide screens, a drawer over the room on narrow ones) -->
+  <div id="scrim" class="fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px] fade-in" hidden></div>
+  <aside id="sidebar" class="flex w-80 shrink-0 flex-col border-l border-white/[.06] bg-[#0f0f12]">
+    <div class="flex h-12 shrink-0 items-center gap-2 border-b border-white/[.06] px-3">
+      <div class="flex flex-1 rounded-lg bg-white/[.04] p-1 ring-1 ring-inset ring-white/[.06]">
+        <button data-pane="chat" class="side-tab active"><i data-icon="chat" class="h-3.5 w-3.5"></i>Chat</button>
+        <button data-pane="settings" class="side-tab"><i data-icon="settings" class="h-3.5 w-3.5"></i>Settings</button>
+      </div>
+      <button id="sidebarClose" class="icon-btn drawer-only h-8 w-8" title="Close"><i data-icon="x" class="h-4 w-4"></i></button>
+    </div>
+
+    <div id="chatPane" class="flex min-h-0 flex-1 flex-col">
+      <div id="chatEmpty" class="flex flex-1 flex-col items-center justify-center gap-1 px-8 text-center">
+        <div class="mb-2 grid h-12 w-12 place-items-center rounded-2xl bg-white/[.04] text-zinc-400 ring-1 ring-inset ring-white/[.06]"><i data-icon="chat" class="h-5 w-5"></i></div>
+        <p class="text-sm font-medium text-zinc-300">No messages yet</p>
+        <p class="text-xs text-zinc-500">Say hi to the room 👋</p>
+      </div>
+      <div id="messages" class="flex-1 overflow-y-auto px-3 py-4" hidden></div>
+      <form id="chatForm" class="shrink-0 p-3">
+        <div class="flex items-center gap-1 rounded-xl border border-white/[.08] bg-zinc-900/80 pl-3.5 pr-1 transition focus-within:border-indigo-400/50 focus-within:ring-4 focus-within:ring-indigo-500/10">
+          <input id="chatInput" class="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-zinc-500" placeholder="Message the room…" maxlength="1000" autocomplete="off">
+          <button class="icon-btn h-8 w-8 text-indigo-300 hover:text-indigo-200" title="Send"><i data-icon="send" class="h-4 w-4"></i></button>
+        </div>
+      </form>
+    </div>
+
+    <div id="settingsPane" class="flex-1 space-y-6 overflow-y-auto p-4" hidden>
+      <section>
+        <p class="label">You</p>
+        <div class="flex items-center gap-3 rounded-xl border border-white/[.06] bg-white/[.02] p-3">
+          <div id="meAvatar"></div>
+          <div class="min-w-0 flex-1"><p id="meName" class="truncate text-sm font-medium"></p><p class="text-xs text-zinc-500">In this room</p></div>
+          <button id="leaveBtn" class="btn-ghost h-8 px-3 text-xs">Leave</button>
+        </div>
+      </section>
+
+      <section>
+        <p class="label">Shared screen <span class="normal-case tracking-normal text-zinc-600">· applies to everyone</span></p>
+        <div class="space-y-3">
+          <label class="block text-[13px] text-zinc-300">Resolution
+            <select id="resSelect" class="select mt-1.5">
+              <option value="1024x576">1024 × 576</option>
+              <option value="1280x720">1280 × 720 (HD)</option>
+              <option value="1600x900">1600 × 900</option>
+              <option value="1920x1080">1920 × 1080 (Full HD)</option>
+            </select>
+          </label>
+          <label class="block text-[13px] text-zinc-300">Image quality
+            <select id="qualSelect" class="select mt-1.5">
+              <option value="40">Low · least bandwidth</option>
+              <option value="60">Balanced</option>
+              <option value="75">High</option>
+              <option value="90">Best</option>
+            </select>
+          </label>
+          <p class="text-xs text-zinc-500">Only the person in control can change these.</p>
+        </div>
+      </section>
+
+      <section>
+        <p class="label">Saved logins <span class="normal-case tracking-normal text-zinc-600">· cookies &amp; sessions</span></p>
+        <div class="space-y-3">
+          <p class="text-xs text-zinc-500">Log in to a site in the browser, then save that session here so you can export it.</p>
+          <form id="saveStateForm" class="flex gap-2">
+            <input id="saveStateName" class="h-8 min-w-0 flex-1 rounded-lg border border-white/[.08] bg-zinc-900/80 px-2.5 text-[13px] outline-none placeholder:text-zinc-500 focus:border-indigo-400/50" placeholder="Name, e.g. github" maxlength="64" autocomplete="off">
+            <button class="btn-ghost h-8 shrink-0 px-3 text-xs"><i data-icon="plus" class="h-3.5 w-3.5"></i>Save current</button>
+          </form>
+          <div id="stateList" class="space-y-2"></div>
+          <div class="flex gap-2">
+            <button id="exportAllBtn" class="btn-ghost h-8 flex-1 px-3 text-xs"><i data-icon="download" class="h-3.5 w-3.5"></i>Export all</button>
+            <button id="importBtn" class="btn-ghost h-8 flex-1 px-3 text-xs"><i data-icon="upload" class="h-3.5 w-3.5"></i>Import</button>
+            <input id="importFile" type="file" accept="application/json,.json" hidden>
+          </div>
+          <p class="text-xs text-amber-400/80">Exported files contain login tokens — anyone with the file can sign in as you. Keep them private and delete when done.</p>
+        </div>
+      </section>
+
+      <section>
+        <p class="label">This device</p>
+        <div class="space-y-4">
+          <label class="block text-[13px] text-zinc-300">
+            <span class="flex justify-between">Scroll speed <span id="scrollVal" class="tabular-nums text-zinc-500"></span></span>
+            <input id="scrollSpeed" type="range" min="0.25" max="3" step="0.25" class="range mt-2.5 w-full">
+          </label>
+          <label class="toggle-row"><span>Show other people’s cursors</span><input id="optCursors" type="checkbox" class="toggle"></label>
+          <label class="toggle-row"><span>Show emoji reactions</span><input id="optEmotes" type="checkbox" class="toggle"></label>
+        </div>
+      </section>
+    </div>
+  </aside>

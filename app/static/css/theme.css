@@ -1,0 +1,64 @@
+/* ---------- Theme tokens (dark default, light via [data-theme="light"]) ---------- */
+:root {
+  --bg: #0a0a0c;           /* page + stage */
+  --header: #111114;       /* header, control bar, sidebar */
+  --panel: #18181c;        /* browser window body */
+  --panel-hi: #202026;     /* tab strip, toolbar */
+  --field: #0d0d10;        /* inputs, omnibox */
+  --line: rgba(255,255,255,.22);
+  --line-soft: rgba(255,255,255,.12);
+  --fg: #f4f4f5;
+  --fg-2: #c9c9d1;
+  --dim: #9a9aa6;
+  --hover: rgba(255,255,255,.09);
+  --accent: #6366f1;       /* take control / primary */
+  --accent-hi: #818cf8;
+  --accent-soft: rgba(99,102,241,.2);
+  --accent-fg: #c7d2fe;
+  --ok: #10b981;           /* you're in control / switch on */
+  --ok-soft: rgba(16,185,129,.16);
+  --ok-fg: #6ee7b7;
+  --warn: #f59e0b;         /* someone else is in control */
+  --warn-soft: rgba(245,158,11,.16);
+  --warn-fg: #fcd34d;
+  --bad: #ef4444;          /* agent blocked */
+  --bad-soft: rgba(239,68,68,.18);
+  --bad-fg: #fca5a5;
+  --off-track: #3a3a44;    /* switch off */
+  --off-thumb: #9a9aa6;
+  --shadow: rgba(0,0,0,.7);
+  --grid: rgba(255,255,255,.07);
+  --frame: var(--panel-hi);
+  --toolbar: var(--panel);
+  --omni: var(--field);
+}
+:root[data-theme="light"] {
+  --bg: #e9eaee;
+  --header: #ffffff;
+  --panel: #ffffff;
+  --panel-hi: #dfe1e8;
+  --field: #f1f2f6;
+  --line: rgba(15,15,30,.28);
+  --line-soft: rgba(15,15,30,.14);
+  --fg: #14141a;
+  --fg-2: #3a3a46;
+  --dim: #5f6070;
+  --hover: rgba(15,15,30,.07);
+  --accent: #4f46e5;
+  --accent-hi: #4338ca;
+  --accent-soft: rgba(79,70,229,.14);
+  --accent-fg: #3730a3;
+  --ok: #059669;
+  --ok-soft: rgba(5,150,105,.14);
+  --ok-fg: #047857;
+  --warn: #d97706;
+  --warn-soft: rgba(217,119,6,.15);
+  --warn-fg: #92400e;
+  --bad: #dc2626;
+  --bad-soft: rgba(220,38,38,.12);
+  --bad-fg: #b91c1c;
+  --off-track: #c3c5d0;
+  --off-thumb: #ffffff;
+  --shadow: rgba(20,20,40,.25);
+  --grid: rgba(15,15,30,.08);
+}

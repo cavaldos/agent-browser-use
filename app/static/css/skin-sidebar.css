@@ -1,0 +1,27 @@
+/* Sidebar */
+#sidebar { width: 318px; border-left: 1px solid var(--line) !important; background: var(--header) !important; }
+#sidebar > div:first-child { height: 54px; border-bottom: 1px solid var(--line) !important; }
+#sidebar > div:first-child > div { background: var(--field) !important; box-shadow: inset 0 0 0 1px var(--line-soft) !important; border-radius: 10px !important; }
+#sidebar .side-tab { border-radius: 8px !important; font-size: 12px; color: var(--dim); }
+#sidebar .side-tab:hover { color: var(--fg); }
+#sidebar .side-tab.active { background: var(--accent) !important; color: #fff; box-shadow: none; }
+#sidebar .label, .label { color: var(--dim) !important; font-size: 10px; letter-spacing: .1em; }
+#sidebar section > div.rounded-xl { background: var(--panel) !important; border-color: var(--line-soft) !important; }
+#sidebar .pop, #membersPop, #helpPop, #emotePop { border-radius: 10px !important; background: var(--panel) !important; border-color: var(--line) !important; box-shadow: 0 12px 40px var(--shadow) !important; }
+#sidebar input:not(.toggle):not(.range), #sidebar select, #chatInput { border-radius: 8px !important; background: var(--field) !important; border-color: var(--line-soft) !important; color: var(--fg) !important; }
+#sidebar input:not(.toggle):not(.range):focus, #sidebar select:focus { border-color: var(--accent) !important; box-shadow: 0 0 0 3px var(--accent-soft) !important; }
+#chatForm > div { background: var(--field) !important; border-color: var(--line-soft) !important; }
+#chatForm > div:focus-within { border-color: var(--accent) !important; }
+.btn-primary { background: var(--accent) !important; color: #fff !important; box-shadow: none !important; border-radius: 8px !important; }
+.btn-primary:hover { background: var(--accent-hi) !important; }
+.btn-ghost { background: var(--hover) !important; color: var(--fg) !important; border: 1px solid var(--line-soft); border-radius: 8px !important; box-shadow: none !important; }
+.btn-ghost:hover { background: var(--line-soft) !important; }
+
+/* Login */
+#login { background: var(--bg) !important; }
+#login .glow, #login .absolute.-bottom-40, #login .absolute.inset-0 { display: none; }
+#loginForm { border-radius: 16px !important; border-color: var(--line) !important; background: var(--header) !important; box-shadow: 0 28px 80px var(--shadow) !important; backdrop-filter: none !important; }
+#loginForm > div:first-child > div { background: var(--accent) !important; box-shadow: none !important; color: #fff; }
+#loginForm h1 { color: var(--fg); }
+#loginForm .field { border-radius: 8px !important; background: var(--field) !important; border-color: var(--line); color: var(--fg); }
+#loginForm .field:focus { border-color: var(--accent); }

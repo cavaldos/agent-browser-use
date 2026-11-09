@@ -1,0 +1,32 @@
+#lockHint { border-radius: 99px !important; background: var(--panel) !important; border-color: var(--line) !important; color: var(--fg) !important; }
+.agent-caption { border-radius: 99px !important; background: var(--panel); color: var(--fg); border-color: rgb(167 139 250 / .6); }
+.agent-caption.say { border-radius: 14px !important; }
+.agent-caption .bot { background: rgb(167 139 250 / .3); }
+
+/* Light-mode fixes for Tailwind utility colours hard-coded for dark */
+:root[data-theme="light"] .text-zinc-100, :root[data-theme="light"] .text-zinc-200, :root[data-theme="light"] .text-zinc-300 { color: var(--fg-2) !important; }
+:root[data-theme="light"] .text-zinc-400, :root[data-theme="light"] .text-zinc-500, :root[data-theme="light"] .text-zinc-600 { color: var(--dim) !important; }
+:root[data-theme="light"] [class*="bg-white/"], :root[data-theme="light"] [class*="bg-zinc-900"] { background-color: var(--hover); }
+:root[data-theme="light"] [class*="border-white/"], :root[data-theme="light"] [class*="ring-white/"] { border-color: var(--line-soft); --tw-ring-color: var(--line-soft); }
+:root[data-theme="light"] .text-amber-400\/80 { color: #b45309 !important; }
+:root[data-theme="light"] .member, :root[data-theme="light"] .member .badge { box-shadow: 0 0 0 2px var(--header); }
+:root[data-theme="light"] #paused { background: rgb(255 255 255 / .6); }
+:root[data-theme="light"] #resumeBtn { color: var(--fg); background: var(--hover); }
+:root[data-theme="light"] .tab-spin { border-color: var(--accent-soft); border-top-color: var(--accent); }
+:root[data-theme="light"] #scrim { background: rgb(0 0 0 / .25); }
+.member { box-shadow: 0 0 0 2px var(--header); }
+.member .badge { box-shadow: 0 0 0 2px var(--header); }
+
+@media (max-width: 899px) {
+  .browser-window { left: 50%; width: calc(100% - 24px); max-height: calc(100% - 46px); }
+}
+@media (max-width: 520px) {
+  #app > .flex-1 > header { padding: 0 10px; }
+  #app > .flex-1 > header > div:first-child > span:not(.hud-jp) { font-size: 12px; }
+  .browser-window { width: calc(100% - 12px); }
+}
+
+/* Square look: every corner 2px (only spinners/status dots stay round) */
+.hud-body *:not(.spinner):not(.tab-spin):not(.ping):not(.dot):not(.agent-ripple),
+.hud-body *:not(.spinner):not(.tab-spin):not(.ping):not(.dot):not(.agent-ripple)::after { border-radius: 2px !important; }
+.tab.active::before, .tab.active::after { display: none !important; }

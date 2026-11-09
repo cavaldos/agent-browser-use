@@ -1,0 +1,45 @@
+/* Control bar */
+#bar { height: 54px; padding: 0 14px; background: var(--header) !important; }
+#bar { border-top: 0; }
+#bar, #bar ~ * { color: var(--fg-2); }
+.hud-body .border-t { border-top-color: var(--line) !important; }
+.hud-body .bg-\[\#0f0f12\] { background: var(--header) !important; }
+.icon-btn { color: var(--dim); border-radius: 8px !important; }
+.icon-btn:hover { background: var(--hover) !important; color: var(--fg); }
+#viewInfo { color: var(--dim); }
+#playBtn { background: var(--hover) !important; color: var(--fg) !important; box-shadow: inset 0 0 0 1px var(--line-soft) !important; }
+
+/* Control button: 3 clearly different modes */
+.ctrl-btn, .block-btn { border-radius: 10px !important; box-shadow: none !important; }
+.ctrl-icon { border-radius: 8px !important; }
+/* free: nobody drives → solid accent call-to-action */
+.ctrl-btn.free { background: var(--accent) !important; color: #fff !important; border: 1px solid transparent; }
+.ctrl-btn.free:hover { background: var(--accent-hi) !important; }
+.ctrl-btn.free .ctrl-icon { background: rgba(255,255,255,.22) !important; color: #fff !important; }
+/* mine: you drive → solid green */
+.ctrl-btn.mine { background: var(--ok) !important; color: #fff !important; border: 1px solid transparent; }
+.ctrl-btn.mine:hover { filter: brightness(1.08); }
+.ctrl-btn.mine .ctrl-icon { background: rgba(255,255,255,.25) !important; color: #fff !important; }
+.ctrl-btn.mine .ctrl-action { background: rgba(0,0,0,.22); color: #fff; }
+/* other: someone else drives → amber outline */
+.ctrl-btn.other { background: var(--warn-soft) !important; color: var(--warn-fg) !important; border: 1px solid var(--warn); }
+.ctrl-btn.other .ctrl-action { background: var(--warn); color: #fff; }
+.ctrl-btn.other:hover .ctrl-action { filter: brightness(1.1); }
+.ctrl-btn.other .ctrl-icon { color: #000 !important; }
+
+/* Block agent: neutral when off, solid red when on */
+.block-btn { background: transparent !important; color: var(--fg-2) !important; border: 1px solid var(--line); }
+.block-btn:hover { background: var(--hover) !important; color: var(--fg) !important; }
+.block-btn.on { background: var(--bad) !important; color: #fff !important; border-color: var(--bad); }
+.block-btn.on:hover { filter: brightness(1.1); }
+
+/* Switches: off = grey track + grey thumb left, on = green track + white thumb right */
+.toggle-row { color: var(--fg-2); }
+.toggle { width: 40px; height: 22px; background: var(--off-track) !important; box-shadow: inset 0 0 0 1px var(--line); border: 0 !important; }
+.toggle::after { top: 3px; left: 3px; width: 16px; height: 16px; background: var(--off-thumb); box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+.toggle:checked { background: var(--ok) !important; box-shadow: none; }
+.toggle:checked::after { background: #fff; transform: translateX(18px); }
+.range { background: var(--off-track) !important; border: 0 !important; padding: 0 !important; height: 4px !important; }
+.range::-webkit-slider-thumb { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.range::-moz-range-thumb { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.emote-btn:hover { background: var(--hover); }

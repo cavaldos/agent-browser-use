@@ -1,0 +1,42 @@
+/* Emoji reactions */
+.emote-btn { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; font-size: 19px; transition: transform .12s, background .15s; }
+.emote-btn:hover { background: rgb(255 255 255 / .07); transform: translateY(-2px) scale(1.12); }
+.emote-btn:active { transform: scale(.92); }
+.emote { position: absolute; bottom: 8%; display: flex; flex-direction: column; align-items: center; gap: 2px; animation: emote 3s cubic-bezier(.2, .7, .3, 1) forwards; }
+.emote .e { font-size: 40px; line-height: 1; filter: drop-shadow(0 6px 12px rgb(0 0 0 / .4)); }
+.emote .n { font-size: 11px; font-weight: 600; color: #0a0a0a; padding: 1px 7px; border-radius: 99px; }
+
+/* Members: overlapping avatar stack in the header */
+.member { position: relative; display: block; border-radius: 99px; box-shadow: 0 0 0 2px #0b0b0e; }
+#membersBtn:hover .member { box-shadow: 0 0 0 2px #17171a; }
+.member.ctrl { z-index: 1; } /* keep the "in control" badge above the next avatar */
+.member .badge { position: absolute; right: -3px; bottom: -3px; display: grid; place-items: center; width: 13px; height: 13px; border-radius: 99px; background: #10b981; color: #fff; box-shadow: 0 0 0 2px #0b0b0e; }
+
+/* Other people's cursors */
+.cursor { position: absolute; left: 0; top: 0; transition: transform 90ms linear, opacity .2s; will-change: transform; }
+.cursor .tag { position: absolute; left: 14px; top: 16px; white-space: nowrap; border-radius: 6px; padding: 2px 7px; font-size: 11px; font-weight: 600; color: #0a0a0a; box-shadow: 0 4px 12px rgb(0 0 0 / .35); }
+
+/* The AI agent: its cursor, the element it acts on, a caption for each step, click ripples */
+.cursor.agent { transition: transform 40ms linear, opacity .2s; z-index: 2; }
+.cursor.agent svg { width: 22px; height: 22px; filter: drop-shadow(0 0 6px rgb(167 139 250 / .85)); }
+.cursor.agent .tag { left: 17px; top: 19px; }
+.agent-box { position: absolute; left: 0; top: 0; border: 2px solid #a78bfa; border-radius: 7px; background: rgb(167 139 250 / .12);
+  box-shadow: 0 0 0 4px rgb(167 139 250 / .18), 0 0 28px rgb(167 139 250 / .4); opacity: 0;
+  transition: opacity .2s, left .25s ease, top .25s ease, width .25s ease, height .25s ease; }
+.agent-box.show { opacity: 1; animation: agent-pulse 1.2s ease-in-out infinite; }
+@keyframes agent-pulse { 50% { box-shadow: 0 0 0 7px rgb(167 139 250 / .1), 0 0 34px rgb(167 139 250 / .5); } }
+.agent-caption { position: absolute; left: 50%; top: 12px; display: flex; align-items: center; gap: 8px; width: max-content;
+  padding: 5px 13px 5px 6px; border-radius: 99px; border: 1px solid rgb(167 139 250 / .45); background: rgb(24 24 27 / .92);
+  color: #ede9fe; font-size: 12.5px; font-weight: 500; line-height: 1.35; box-shadow: 0 8px 24px rgb(0 0 0 / .45);
+  backdrop-filter: blur(8px); opacity: 0; transform: translate(-50%, -6px); transition: opacity .2s, transform .2s; }
+.agent-caption.show { opacity: 1; transform: translate(-50%, 0); }
+.agent-caption .bot { display: grid; place-items: center; width: 22px; height: 22px; flex-shrink: 0; border-radius: 99px; background: rgb(167 139 250 / .25); font-size: 13px; }
+.agent-caption .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-caption.say { border-radius: 14px; background: rgb(46 16 101 / .92); }
+.agent-caption.say .txt { white-space: normal; }
+.agent-ripple { position: absolute; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 99px; border: 2px solid #c4b5fd;
+  background: rgb(167 139 250 / .3); animation: agent-ripple .6s ease-out forwards; }
+@keyframes agent-ripple { from { transform: scale(.25); opacity: 1; } to { transform: scale(1.7); opacity: 0; } }
+
+/* On small screens a healthy connection is just a green dot */
+@media (max-width: 767px) { #status.ok { background: none; box-shadow: none; padding: 0 4px; } }

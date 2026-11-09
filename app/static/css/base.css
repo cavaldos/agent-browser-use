@@ -1,0 +1,39 @@
+/* Things Tailwind utilities don't cover well: the browser window, tabs, switches, animations. */
+
+:root {
+  --frame: #151518;    /* tab strip */
+  --toolbar: #26262b;  /* active tab + toolbar */
+  --omni: #151518;     /* address bar */
+}
+
+[hidden] { display: none !important; }
+
+/* Scrollbars */
+* { scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / .12) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: rgb(255 255 255 / .1); border-radius: 99px; border: 3px solid transparent; background-clip: padding-box; }
+
+/* Animations */
+@keyframes rise { from { opacity: 0; transform: translateY(10px) scale(.98); } }
+@keyframes fade { from { opacity: 0; } }
+@keyframes pop { from { opacity: 0; transform: translateY(6px) scale(.97); } }
+@keyframes float { 50% { transform: translate(-50%, 24px) scale(1.05); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes ping { 75%, 100% { transform: scale(2.2); opacity: 0; } }
+@keyframes tabIn { from { flex-basis: 0; min-width: 0; opacity: 0; } }
+@keyframes emote {
+  0%   { transform: translate(-50%, 0) scale(.6); opacity: 0; }
+  12%  { transform: translate(-50%, -30px) scale(1.15); opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--sway)), var(--rise)) scale(1); opacity: 0; }
+}
+
+.rise { animation: rise .5s cubic-bezier(.2, .8, .2, 1) both; }
+.fade-in { animation: fade .25s ease both; }
+.pop { animation: pop .22s cubic-bezier(.2, .8, .2, 1) both; }
+.glow { animation: float 12s ease-in-out infinite; }
+.spinner { animation: spin .8s linear infinite; }
+#status .ping { animation: ping 1.5s cubic-bezier(0, 0, .2, 1) infinite; background: rgb(251 191 36); }
+#status.ok .ping { display: none; }
+
+kbd { font: 500 11px/1 Inter, sans-serif; padding: 3px 5px; border-radius: 5px; background: rgb(255 255 255 / .08); border: 1px solid rgb(255 255 255 / .08); color: #e4e4e7; }

@@ -1,0 +1,40 @@
+    <!-- Shared screen -->
+    <section id="stage" class="stage-bg relative min-h-0 flex-1 overflow-hidden">
+      <div id="window" class="browser-window">
+        <div id="tabstrip">
+          <div id="tablist"></div>
+          <button id="newTabBtn" class="newtab" title="New tab (Alt+T)"><i data-icon="plus" class="h-4 w-4"></i></button>
+        </div>
+        <div id="toolbar">
+          <button id="backBtn" class="icon-btn h-8 w-8 rounded-full" title="Back (Alt+←)" disabled><i data-icon="back" class="h-[18px] w-[18px]"></i></button>
+          <button id="fwdBtn" class="icon-btn h-8 w-8 rounded-full" title="Forward (Alt+→)" disabled><i data-icon="forward" class="h-[18px] w-[18px]"></i></button>
+          <button id="reloadBtn" class="icon-btn h-8 w-8 rounded-full" title="Reload (Ctrl+R)"><i data-icon="reload" class="h-[16px] w-[16px]"></i></button>
+          <form id="urlForm" class="omnibox">
+            <span id="urlIcon" class="grid h-6 w-6 shrink-0 place-items-center rounded-full text-zinc-400"></span>
+            <input id="urlInput" placeholder="Search Google or type a URL" autocomplete="off" spellcheck="false">
+          </form>
+        </div>
+        <div id="viewport">
+          <canvas id="screen" width="1280" height="720"></canvas>
+          <textarea id="kbd" aria-hidden="true" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+          <div id="loading" class="absolute inset-0 grid place-items-center bg-[#26262b]">
+            <div class="flex flex-col items-center gap-3 text-sm text-zinc-400">
+              <div class="spinner h-8 w-8 rounded-full border-2 border-white/10 border-t-indigo-400"></div>
+              <span>Connecting to the shared browser…</span>
+            </div>
+          </div>
+          <div id="paused" class="absolute inset-0 grid place-items-center bg-black/60 backdrop-blur-sm" hidden>
+            <button id="resumeBtn" class="grid h-16 w-16 place-items-center rounded-full bg-white/10 text-white ring-1 ring-white/20 transition hover:scale-105 hover:bg-white/20"><i data-icon="play" class="ml-1 h-7 w-7"></i></button>
+          </div>
+        </div>
+      </div>
+
+      <div id="emoteLayer" class="pointer-events-none absolute inset-0 overflow-hidden"></div>
+      <div id="agentLayer" class="pointer-events-none absolute inset-0 z-10 overflow-hidden">
+        <div id="agentBox" class="agent-box"></div>
+        <div id="agentCaption" class="agent-caption"><span class="bot">🤖</span><span class="txt"></span></div>
+      </div>
+      <div id="cursors" class="pointer-events-none absolute inset-0 z-10 overflow-hidden"></div>
+      <div id="lockHint" class="pointer-events-none absolute bottom-4 left-1/2 w-max max-w-[90%] text-center rounded-full border border-white/10 bg-zinc-900/90 px-4 py-2 text-xs text-zinc-300 shadow-xl backdrop-blur"></div>
+      <div id="toasts" class="pointer-events-none absolute inset-x-4 bottom-16 z-20 flex flex-col items-center gap-2"></div>
+    </section>

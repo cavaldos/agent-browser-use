@@ -1,0 +1,35 @@
+    <!-- Header -->
+    <header class="flex h-12 shrink-0 items-center gap-3 border-b border-white/[.06] px-3 sm:px-4">
+      <div class="flex items-center gap-2.5">
+        <div class="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-indigo-400 to-violet-600 shadow-md shadow-indigo-600/30">
+          <i data-icon="logo" class="h-4 w-4 text-white"></i>
+        </div>
+        <span class="font-semibold tracking-tight">AGENT BROWSER</span>
+        <span class="hud-jp" aria-hidden="true">エージェントブラウザ</span>
+      </div>
+      <div class="ml-auto flex items-center gap-2">
+        <div id="status" class="flex items-center gap-2 rounded-full bg-white/[.04] px-2.5 py-1 text-xs text-zinc-400 ring-1 ring-inset ring-white/[.06]">
+          <span class="relative flex h-2 w-2"><span class="ping absolute inline-flex h-full w-full rounded-full opacity-60"></span><span class="dot relative inline-flex h-2 w-2 rounded-full bg-amber-400"></span></span>
+          <span class="txt">Connecting…</span>
+        </div>
+
+        <!-- People in the room: avatar stack, click for the full list -->
+        <div class="relative">
+          <button id="membersBtn" class="flex h-9 items-center gap-2 rounded-full py-1 pl-1 pr-2.5 transition hover:bg-white/[.06]" title="People in the room">
+            <span id="members" class="flex items-center -space-x-1"></span>
+            <span class="flex items-center gap-1 text-xs font-medium tabular-nums text-zinc-400"><i data-icon="user" class="h-3.5 w-3.5"></i><span id="memberCount">0</span></span>
+          </button>
+          <div id="membersPop" class="pop absolute right-0 top-11 z-40 w-64 rounded-xl border border-white/10 bg-zinc-900/95 p-2 shadow-2xl backdrop-blur" hidden>
+            <p class="label px-2 pt-1">In the room</p>
+            <ul id="memberList" class="max-h-72 space-y-0.5 overflow-y-auto"></ul>
+          </div>
+        </div>
+
+        <div class="h-5 w-px bg-white/[.08]"></div>
+        <button id="themeBtn" class="icon-btn" title="Toggle light / dark mode"><i data-icon="moon" class="i-moon h-[18px] w-[18px]"></i><i data-icon="sun" class="i-sun h-[18px] w-[18px]"></i></button>
+        <button id="sidebarToggle" class="icon-btn relative" title="Chat & settings">
+          <i data-icon="panel" class="h-[18px] w-[18px]"></i>
+          <span id="unread" class="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-indigo-500 px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-[#0b0b0e]" hidden></span>
+        </button>
+      </div>
+    </header>

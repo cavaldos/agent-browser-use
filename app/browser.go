@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"net/url"
 	"os"
@@ -83,6 +84,8 @@ type Tab struct {
 	navSeq                  int  // newest refreshNav wins
 	lastAudio               time.Time
 	recScript               page.ScriptIdentifier // the flow recorder, while a recording is on
+	share                   *shareOut             // the page is screen sharing the shared screen (share.go)
+	refitAt                 time.Time             // last time refit restored this tab's screen size
 
 	obs *observer // console messages and network requests of this tab
 }
@@ -1023,6 +1026,13 @@ func (b *Browser) attach(id, openerID string, opened bool) (*Tab, error) {
 			_, err := chromedp.Call(ctx, page.AddScriptToEvaluateOnNewDocument, page.AddScriptToEvaluateOnNewDocumentParams{Source: stealthJS, RunImmediately: &run})
 			return err
 		},
+		func() error { // getDisplayMedia gets the shared screen instead of a picker (share.go)
+			if _, err := chromedp.Call(ctx, cdpruntime.AddBinding, cdpruntime.AddBindingParams{Name: shareBinding}); err != nil {
+				return err
+			}
+			_, err := chromedp.Call(ctx, page.AddScriptToEvaluateOnNewDocument, page.AddScriptToEvaluateOnNewDocumentParams{Source: shareJS, RunImmediately: &run})
+			return err
+		},
 		func() error {
 			if !b.opt.Audio {
 				return nil
@@ -1094,7 +1104,8 @@ func (b *Browser) startScreencast(t *Tab, v View) {
 		ctx, cancel := context.WithTimeout(t.ctx, 5*time.Second)
 		_, err := chromedp.Call(ctx, page.StartScreencast, page.StartScreencastParams{
 			Format: page.StartScreencastFormatJpeg, Quality: &q,
-			MaxWidth: int64(v.Width), MaxHeight: int64(v.Height), EveryNthFrame: 1,
+			// Allow full device-pixel frames (pages render at up to 3x), so text stays sharp.
+			MaxWidth: int64(v.Width) * 3, MaxHeight: int64(v.Height) * 3, EveryNthFrame: 1,
 		})
 		cancel()
 		if err == nil || t.ctx.Err() != nil || strings.Contains(err.Error(), "already active") {
@@ -1304,8 +1315,22 @@ func (b *Browser) tabListener(t *Tab) func(ev any) {
 			active := b.active == t
 			if active {
 				b.frame, b.gotFrame = pkt, true
+				b.shareFrameLocked(pkt[1:])
+			}
+			drift := false
+			if active && e.Metadata != nil {
+				want := metrics(b.view, b.emu)
+				drift = math.Abs(e.Metadata.DeviceWidth-float64(want.Width)) > 1 || math.Abs(e.Metadata.DeviceHeight-float64(want.Height)) > 1
+				if drift && time.Since(t.refitAt) > 2*time.Second {
+					t.refitAt = time.Now()
+				} else {
+					drift = false
+				}
 			}
 			b.mu.Unlock()
+			if drift {
+				b.enqueue(func() { b.refit(t) })
+			}
 			if active {
 				b.hub.broadcastFrame(pkt)
 			}
@@ -1316,6 +1341,8 @@ func (b *Browser) tabListener(t *Tab) func(ev any) {
 				b.onAudio(t, e.Payload)
 			case metaBinding:
 				b.onMeta(t, e.Payload)
+			case shareBinding:
+				b.onShare(t, e.Payload)
 			case recBinding:
 				b.onRec(t, e.Payload)
 			}
@@ -1468,6 +1495,7 @@ func (b *Browser) onAudio(t *Tab, p string) {
 	if muted {
 		return
 	}
+	b.shareAudio(t, rate, parts[2])
 
 	pkt := make([]byte, 6+len(pcm))
 	pkt[0] = pktAudio
@@ -1593,7 +1621,7 @@ func (b *Browser) MuteTab(id string) {
 func (b *Browser) SetView(v View) {
 	v.Width = min(max(v.Width, 640), 2560)
 	v.Height = min(max(v.Height, 360), 1600)
-	v.Quality = min(max(v.Quality, 10), 95)
+	v.Quality = min(max(v.Quality, 10), 100)
 	b.enqueue(func() {
 		b.mu.Lock()
 		b.view = v
@@ -1615,6 +1643,28 @@ func (b *Browser) SetView(v View) {
 		}
 		b.hub.broadcastView(v)
 	})
+}
+
+// refit restores a tab's screen size after Chrome changed it on its own (the
+// frames came out squashed until the size was switched back and forth by hand).
+// Setting the same size again is ignored by Chrome, so step off it first.
+func (b *Browser) refit(t *Tab) {
+	b.mu.Lock()
+	v, emu, active := b.view, b.emu, b.active == t
+	b.mu.Unlock()
+	m := metrics(v, emu)
+	nudge := m
+	nudge.Height++
+	ctx, cancel := context.WithTimeout(t.ctx, 5*time.Second)
+	chromedp.Call(ctx, emulation.SetDeviceMetricsOverride, nudge)
+	chromedp.Call(ctx, emulation.SetDeviceMetricsOverride, m)
+	if active {
+		chromedp.Call(ctx, page.StopScreencast, cdp.Empty{})
+	}
+	cancel()
+	if active {
+		b.startScreencast(t, v)
+	}
 }
 
 func (b *Browser) Navigate(raw string) {

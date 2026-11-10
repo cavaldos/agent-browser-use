@@ -584,7 +584,7 @@ func main() {
 	var bo BrowserOptions
 	fl.IntVar(&bo.Width, "width", 1280, "shared screen width")
 	fl.IntVar(&bo.Height, "height", 720, "shared screen height")
-	fl.IntVar(&bo.Quality, "quality", 70, "image quality 10-95 (lower = less bandwidth)")
+	fl.IntVar(&bo.Quality, "quality", 92, "image quality 10-100 (lower = less bandwidth)")
 	fl.IntVar(&bo.MaxTabs, "max-tabs", 12, "maximum number of open tabs")
 	fl.StringVar(&bo.StartURL, "start", "https://www.google.com", "page for new tabs")
 	fl.StringVar(&bo.Profile, "profile", "chrome-profile", "folder for the shared browser's cookies/logins")

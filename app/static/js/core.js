@@ -2,7 +2,7 @@ const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 
 // Room state (from the server) and preferences of this device.
-const state = { me: null, users: {}, ctrl: null, blocked: null, tabs: [], active: "", view: { width: 1280, height: 720, quality: 70 }, enabled: false, paused: false };
+const state = { me: null, users: {}, ctrl: null, blocked: null, tabs: [], active: "", view: { width: 1280, height: 720, quality: 92 }, enabled: false, paused: false };
 const prefs = {
   name: localStorage.getItem("name") || "",
   sound: localStorage.getItem("sound") !== "off",

@@ -3,6 +3,7 @@
 // =====================================================================
 const stage = $("#stage"), win = $("#window"), scr = $("#screen"), kbd = $("#kbd");
 const g = scr.getContext("2d", { alpha: false }); // opaque: cheaper to composite
+g.imageSmoothingQuality = "high";
 
 // Decode one frame at a time. Frames that arrive meanwhile replace each other,
 // so a slow device skips to the newest picture instead of falling behind.
@@ -18,7 +19,7 @@ async function decodeFrames() {
     nextFrame = null;
     try {
       const bmp = await createImageBitmap(new Blob([new Uint8Array(buf, 1)], { type: "image/jpeg" }));
-      if (scr.width !== bmp.width || scr.height !== bmp.height) { scr.width = bmp.width; scr.height = bmp.height; }
+      if (scr.width !== bmp.width || scr.height !== bmp.height) { scr.width = bmp.width; scr.height = bmp.height; g.imageSmoothingQuality = "high"; }
       g.drawImage(bmp, 0, 0);
       bmp.close();
       if (!$("#loading").hidden) $("#loading").hidden = true;

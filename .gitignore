@@ -5,6 +5,7 @@ chrome-profile-*/
 downloads/
 uploads/
 states/
+flows/
 
 # cloudflared is fetched by scripts/fetch-cloudflared.sh and embedded at build time
 app/cloudflared/*

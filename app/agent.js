@@ -11,8 +11,10 @@
 //   pick(x, y)            describes the element under a viewport point (the viewer's "Pick" tool)
 //   resolve(ref, sel)     describes a picked element again (by ref, else by CSS selector)
 //   watchStart/State/Stop wait for the page (or one element) to change on its own
+//   recStart/recStop      record what a person does on the page (viewer "Record" tool), sent to the __abuRec binding
+//   find(target)          finds a recorded element again (browser_run_flow), returns its ref
 (() => {
-  const V = 6;
+  const V = 7;
   if (window.__abu && window.__abu.v === V) return;
 
   // Refs stay the same for the same element across snapshots.
@@ -426,6 +428,200 @@
   }
   const idleFor = () => Math.round(performance.now() - busyAt);
 
+  // ---- Recording a flow (viewer "Record" tool) ----
+  // Every element is described the way it will be looked for again: role + name first (what
+  // browser_snapshot shows), then test id, id, CSS path, text, and last the point on the screen.
+  const TEST_ATTRS = ["data-testid", "data-test-id", "data-test", "data-qa", "data-cy"];
+  // Ids made by frameworks (":r1:", "ember123", long hex) change between visits: don't keep them.
+  const stableId = (id) => (id && id.length < 60 && !/\d{3,}|^:|[0-9a-f]{8,}/i.test(id) ? id : "");
+  const roleFor = (el) => roleOf(el) || (clickable(el) && clean(el.innerText || el.getAttribute("title")) ? "clickable" : null);
+  // The control a click is about: the nearest one around the exact node under the pointer.
+  function actionable(node) {
+    const el = node?.nodeType === 1 ? node : node?.parentElement;
+    for (let e = el, i = 0; e && e !== document.body && i < 8; e = e.parentElement, i++) {
+      if (INTERACTIVE.has(roleOf(e)) || e.tagName === "SELECT" || e.tagName === "LABEL") return e;
+    }
+    for (let e = el, i = 0; e && e !== document.body && i < 8; e = e.parentElement, i++) if (clickable(e)) return e;
+    return el && el !== document.documentElement ? el : null;
+  }
+  // Visible elements with this role and name, in page order (roles from roleOf only: cheap).
+  function sameRoleName(role, name) {
+    const out = [];
+    for (const el of document.querySelectorAll("body *")) {
+      if (roleOf(el) === role && (nameOf(el, role) || "") === name && visible(el)) out.push(el);
+    }
+    return out;
+  }
+  function target(el, e) {
+    const t = { tag: el.tagName.toLowerCase() };
+    const role = roleFor(el), name = role ? nameOf(el, role) : "";
+    if (role) t.role = role;
+    if (name) t.name = name;
+    if (role && role !== "clickable") {
+      const all = sameRoleName(role, name);
+      if (all.indexOf(el) > 0) t.nth = all.indexOf(el);
+      if (all.length > 1) t.count = all.length;
+    }
+    for (const a of TEST_ATTRS) {
+      const v = el.getAttribute(a);
+      if (v) { t.testAttr = a; t.testId = v; break; }
+    }
+    if (stableId(el.id)) t.id = el.id;
+    t.sel = cssPath(el);
+    const text = clean(el.innerText || "", 80);
+    if (text && text !== name) t.text = text;
+    if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
+      if (el.tagName === "INPUT") t.type = (el.type || "text").toLowerCase();
+      if (el.getAttribute("placeholder")) t.placeholder = clean(el.getAttribute("placeholder"), 80);
+      if (el.getAttribute("name")) t.field = el.getAttribute("name").slice(0, 80);
+    }
+    const href = el.getAttribute("href");
+    if (href && !href.startsWith("javascript:")) t.href = href.slice(0, 300);
+    const r = el.getBoundingClientRect(); // the pointer when there is one (canvas), else the center
+    t.x = Math.round(e ? e.clientX : r.left + r.width / 2);
+    t.y = Math.round(e ? e.clientY : r.top + r.height / 2);
+    t.vw = innerWidth; t.vh = innerHeight;
+    return t;
+  }
+
+  // Finds a recorded element on the current page; null when it is not there (yet).
+  function find(t) {
+    const ok = (el) => el && el.isConnected && visible(el);
+    const hit = (el, how) => ({ ref: refOf(el), how, checked: el.tagName === "INPUT" ? !!el.checked : el.getAttribute("aria-checked") === "true" });
+    const tryQuery = (sel) => { try { return [...document.querySelectorAll(sel)].filter(ok); } catch { return []; } };
+    if (t.testId) {
+      const all = tryQuery(`[${t.testAttr || "data-testid"}="${CSS.escape(t.testId)}"]`);
+      if (all.length === 1) return hit(all[0], "test id");
+    }
+    if (t.id) {
+      const el = document.getElementById(t.id);
+      if (ok(el) && (!t.role || roleFor(el) === t.role)) return hit(el, "id");
+    }
+    if (t.role && t.role !== "clickable") {
+      const all = sameRoleName(t.role, t.name || "");
+      if (all.length === 1) return hit(all[0], "role and name");
+      if (all.length > 1) {
+        const same = t.sel && all.find((el) => { try { return el.matches(t.sel); } catch { return false; } });
+        if (same) return hit(same, "role, name and place");
+        const i = Math.min(t.nth || 0, all.length - 1);
+        return hit(all[i], `role and name (#${i + 1} of ${all.length})`);
+      }
+    }
+    if (t.sel) {
+      const el = tryQuery(t.sel)[0];
+      if (el && el.tagName.toLowerCase() === t.tag) return hit(el, "CSS path");
+    }
+    if (t.placeholder || t.field) {
+      const el = [...document.querySelectorAll("input,textarea")].find((x) => ok(x) &&
+        (t.placeholder ? x.getAttribute("placeholder") === t.placeholder : x.getAttribute("name") === t.field));
+      if (el) return hit(el, t.placeholder ? "placeholder" : "field name");
+    }
+    const want = t.text || t.name;
+    if (want) {
+      const all = tryQuery(t.tag).filter((el) => clean(el.innerText || "", 80) === want);
+      if (all.length) return hit(all[Math.min(t.nth || 0, all.length - 1)], "text");
+    }
+    if (t.href) {
+      const el = tryQuery(`a[href="${CSS.escape(t.href)}"]`)[0];
+      if (el) return hit(el, "link address");
+    }
+    return null;
+  }
+
+  const NOT_TEXT = new Set(["checkbox", "radio", "button", "submit", "reset", "image", "file", "range", "color", "hidden"]);
+  // The text field an event happened in (the outer element of a rich-text editor).
+  const editable = (el) => {
+    if (!el || el.nodeType !== 1) return null;
+    if (el.tagName === "TEXTAREA" || (el.tagName === "INPUT" && !NOT_TEXT.has((el.type || "text").toLowerCase()))) return el;
+    if (!el.isContentEditable) return null;
+    while (el.parentElement?.isContentEditable) el = el.parentElement;
+    return el;
+  };
+  const SPECIAL = new Set(["Enter", "Escape", "Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "PageUp", "PageDown", "Home", "End", "Delete", "Backspace", "Insert"]);
+  const EDITING = new Set(["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Home", "End"]);
+  // The key as browser_press_key writes it ("Enter", "Control+A"), or "" when it is only typing.
+  function keyCombo(e) {
+    if (["Control", "Alt", "Meta", "Shift", "CapsLock", "Dead", "Process", "Unidentified"].includes(e.key)) return "";
+    const f = editable(e.target), multiline = f && f.tagName !== "INPUT";
+    if (!(e.ctrlKey || e.metaKey || e.altKey)) {
+      if (e.key === " ") { if (f) return ""; }
+      else if (!SPECIAL.has(e.key) && !/^F\d{1,2}$/.test(e.key)) return ""; // typed text: the field's value is recorded instead
+      if (f && (EDITING.has(e.key) || (multiline && (e.key === "Enter" || e.key.startsWith("Arrow"))))) return "";
+    } else if (f && !e.altKey && e.key.length === 1 && "acvxyz".includes(e.key.toLowerCase())) return ""; // copy/paste/undo in a field
+    const key = e.key === " " ? "Space" : e.key.length === 1 ? e.key.toUpperCase() : e.key;
+    return [e.ctrlKey && "Control", e.altKey && "Alt", e.metaKey && "Meta", e.shiftKey && "Shift", key].filter(Boolean).join("+");
+  }
+
+  let rec = null;
+  function recStart() {
+    if (window !== window.top) return false; // only the top page: replay drives that one
+    if (rec) return true;
+    const out = (o) => { try { window.__abuRec(JSON.stringify(o)); } catch {} };
+    let down = null, fill = null;
+    const flush = () => { // typing becomes one step with the field's final text
+      if (!fill) return;
+      clearTimeout(fill.timer);
+      out({ k: "fill", t: fill.t, v: fill.secret ? "" : fill.v, secret: fill.secret });
+      fill = null;
+    };
+    const on = {
+      pointerdown(e) {
+        if (!e.isTrusted || e.button === 1) return;
+        const el = actionable(e.composedPath?.()[0] || e.target);
+        down = el ? { t: target(el, e), x: e.clientX, y: e.clientY, b: e.button } : null;
+      },
+      pointerup(e) {
+        if (!e.isTrusted || !down) return;
+        const d = down;
+        down = null;
+        flush();
+        if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 12) {
+          const end = actionable(document.elementFromPoint(e.clientX, e.clientY));
+          return out({ k: "drag", t: d.t, to: end ? target(end, e) : { tag: "", x: e.clientX, y: e.clientY, vw: innerWidth, vh: innerHeight } });
+        }
+        out({ k: d.b === 2 ? "rclick" : "click", t: d.t }); // on a <select>, the choice that follows replaces it
+      },
+      dblclick(e) { if (e.isTrusted) out({ k: "dblclick" }); },
+      input(e) {
+        if (!e.isTrusted) return;
+        const el = editable(e.composedPath?.()[0] || e.target);
+        if (!el) return;
+        if (fill && fill.el !== el) flush();
+        if (!fill) fill = { el, t: target(el), secret: el.type === "password" };
+        fill.v = el.isContentEditable ? el.innerText : el.value;
+        clearTimeout(fill.timer);
+        fill.timer = setTimeout(flush, 1000);
+      },
+      change(e) {
+        if (!e.isTrusted) return;
+        const el = e.target;
+        if (el.tagName === "SELECT") {
+          flush();
+          out({ k: "select", t: target(el), vs: [...el.selectedOptions].map((o) => clean(o.label || o.text, 120)) });
+        } else if (fill && fill.el === el) flush();
+      },
+      keydown(e) {
+        if (!e.isTrusted || e.isComposing) return;
+        const combo = keyCombo(e);
+        if (!combo) return;
+        flush();
+        out({ k: "key", v: combo });
+      },
+      focusout(e) { if (fill && fill.el === e.target) flush(); },
+      pagehide() { flush(); },
+    };
+    for (const [type, f] of Object.entries(on)) addEventListener(type, f, true);
+    rec = { on, flush };
+    return true;
+  }
+  function recStop() {
+    if (!rec) return false;
+    rec.flush();
+    for (const [type, f] of Object.entries(rec.on)) removeEventListener(type, f, true);
+    rec = null;
+    return true;
+  }
+
   const observer = new MutationObserver((ms) => {
     if (watch && !watch.hit && watch.scope && ms.some((m) => watch.scope.contains(m.target))) watch.hit = "element";
     if (!ms.some((m) => !timerLike(m.target))) return;
@@ -436,7 +632,7 @@
 
   Object.defineProperty(window, "__abu", {
     value: { v: V, refs, ids, get n() { return n; }, get, snapshot, pick, resolve, locate, prepareInput, selectOption, hasText,
-      idleFor, watchStart, watchState, watchStop, observer, fileInput },
+      idleFor, watchStart, watchState, watchStop, observer, fileInput, recStart, recStop, find },
     configurable: true, enumerable: false, writable: true,
   });
 })();

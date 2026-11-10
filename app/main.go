@@ -88,6 +88,9 @@ type Msg struct {
 	// Picked page element (type "pick", Event hover|click)
 	Pick *Pick `json:"pick,omitempty"`
 
+	// Flow recording (type "rec": live state; "rec_done": the saved flow)
+	Rec *FlowInfo `json:"rec,omitempty"`
+
 	// What the AI agent is doing (type "agent")
 	Act      string `json:"act,omitempty"` // step, click, key, say
 	Rect     *Rect  `json:"rect,omitempty"`
@@ -120,19 +123,21 @@ type Hub struct {
 	browser  *Browser
 	ctrl     *Client // who controls the shared browser
 
-	agent     *Client // the AI agent: has no connection, shown in the room once it acts
-	agentOn   bool
-	agentLast time.Time
-	agentBusy bool    // a tool call is running (it may be waiting for the page): not idle
-	agentFrom *Client // the person the agent took control from; gets it back when the agent is done
-	blocked   *User   // set while someone has blocked the agent from taking control
-	chatSeq   int64
-	seats     map[string]*Seat // connected coding agents, by @handle
-	seatsSent []string         // the agent list everyone has
-	chatWake  chan struct{}    // closed when a message for the agent arrives
-	picks     map[string]*Pick // elements people picked in the viewer, by code
-	pickOrder []string
-	humanLast time.Time // last time the person in control sent input (the agent waits while they are active)
+	agent       *Client // the AI agent: has no connection, shown in the room once it acts
+	agentOn     bool
+	agentLast   time.Time
+	agentBusy   bool    // a tool call is running (it may be waiting for the page): not idle
+	agentFrom   *Client // the person the agent took control from; gets it back when the agent is done
+	blocked     *User   // set while someone has blocked the agent from taking control
+	chatSeq     int64
+	seats       map[string]*Seat // connected coding agents, by @handle
+	seatsSent   []string         // the agent list everyone has
+	chatWake    chan struct{}    // closed when a message for the agent arrives
+	picks       map[string]*Pick // elements people picked in the viewer, by code
+	pickOrder   []string
+	rec         *recording // the flow being recorded, if any
+	runningFlow string     // id of the flow being replayed, if any
+	humanLast   time.Time  // last time the person in control sent input (the agent waits while they are active)
 }
 
 // Bright colors that read well on a dark background.
@@ -315,6 +320,12 @@ func (h *Hub) handle(c *Client, m Msg) {
 			go h.pick(c, m)
 		}
 
+	case "rec_start":
+		h.recStart(c)
+
+	case "rec_stop", "rec_discard":
+		h.recStop(c, m.Type == "rec_discard")
+
 	case "control_take":
 		h.humanLast = time.Now()
 		if h.ctrl != c {
@@ -358,6 +369,7 @@ func (h *Hub) handle(c *Client, m Msg) {
 			return
 		}
 		h.humanLast = time.Now()
+		h.recInput(m)
 		b := h.browser
 		switch m.Type {
 		case "nav":
@@ -462,6 +474,9 @@ func (h *Hub) serveWS(w http.ResponseWriter, r *http.Request) {
 		init.Ctrl = &h.ctrl.user
 	}
 	init.Blocked = h.blocked
+	if h.rec != nil {
+		init.Rec = h.recInfo()
+	}
 	initMsg, _ := json.Marshal(init)
 	c.send <- outMsg{data: initMsg}
 	if frame != nil {
@@ -481,6 +496,9 @@ func (h *Hub) serveWS(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.agentFrom == c {
 		h.agentFrom = nil
+	}
+	if h.rec != nil && h.rec.by == c { // whoever recorded left: keep what they did
+		h.recStop(nil, false)
 	}
 	h.broadcast(Msg{Type: "user_leave", ID: c.user.ID}, nil)
 	h.mu.Unlock()
@@ -575,6 +593,7 @@ func main() {
 	fl.StringVar(&bo.DownloadDir, "downloads", "", "folder for downloaded files (empty = \"downloads\" next to the profile folder)")
 	fl.StringVar(&bo.UploadDir, "uploads", "", "folder the agent may upload files from (empty = \"uploads\" next to the profile folder)")
 	fl.StringVar(&bo.StateDir, "states", "", "folder for saved logins/sessions (empty = \"states\" next to the profile folder)")
+	fl.StringVar(&bo.FlowDir, "flows", "", "folder for recorded flows (empty = \"flows\" next to the profile folder)")
 	var ao AgentOptions
 	fl.Float64Var(&ao.Speed, "agent-speed", 0, "pace of the AI agent's cursor and typing, for people who want to follow it: 0 instant, 1 normal, 2 slower")
 	fl.BoolVar(&ao.OpenViewer, "open", true, "open the web UI in your browser when the agent starts and nobody is watching")
@@ -678,7 +697,7 @@ func main() {
 			bo.Profile = abs
 		}
 		base := filepath.Dir(bo.Profile)
-		for dir, name := range map[*string]string{&bo.DownloadDir: "downloads", &bo.UploadDir: "uploads", &bo.StateDir: "states"} {
+		for dir, name := range map[*string]string{&bo.DownloadDir: "downloads", &bo.UploadDir: "uploads", &bo.StateDir: "states", &bo.FlowDir: "flows"} {
 			if *dir == "" {
 				*dir = filepath.Join(base, name)
 			} else if abs, err := filepath.Abs(*dir); err == nil {
@@ -700,6 +719,7 @@ func main() {
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 	mux.HandleFunc("/ws", h.serveWS)
 	registerStateAPI(mux, mcp)
+	registerFlowAPI(mux, h, mcp)
 	registerTunnelAPI(mux, tm)
 	if !*noMCP {
 		mux.HandleFunc("/mcp", mcp.ServeHTTP(*mcpRemote))

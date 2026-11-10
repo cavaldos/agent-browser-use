@@ -64,6 +64,7 @@ function onMessage(m) {
       scrollChat(true);
       send({ type: "audio", on: prefs.sound });
       if (state.paused) send({ type: "pause", on: true });
+      onRec(m.rec, true);
       renderMembers(); renderCtrl(); renderBlock(); renderSettings(); layout();
       break;
     case "agents":
@@ -98,6 +99,10 @@ function onMessage(m) {
     case "tabs": setTabs(m.tabs || [], m.active || ""); break;
     case "view": state.view = m.view; renderSettings(); layout(); break;
     case "pick": onPick(m); break;
+    case "rec": onRec(m.rec); break;
+    case "rec_done": onRecDone(m.rec); break;
+    case "flows": renderFlows(); break;
+    case "flow_run": onFlowRun(m.rec); break;
     case "chat": addChat(m.msg, true); break;
     case "emote": spawnEmote(m.text, m.user); break;
     case "cursor": moveCursor(m); break;

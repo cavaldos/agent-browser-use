@@ -36,5 +36,18 @@
       </div>
       <div id="cursors" class="pointer-events-none absolute inset-0 z-10 overflow-hidden"></div>
       <div id="lockHint" class="pointer-events-none absolute bottom-4 left-1/2 w-max max-w-[90%] text-center rounded-full border border-white/10 bg-zinc-900/90 px-4 py-2 text-xs text-zinc-300 shadow-xl backdrop-blur"></div>
+      <!-- Record tool: live state while a flow is recorded, and the card with the saved flow's id -->
+      <div id="recBar" class="pop rounded-xl border border-red-400/40 bg-zinc-900/95 py-2 pl-3 pr-2 text-[13px] text-zinc-200 shadow-2xl backdrop-blur" hidden>
+        <div class="flex items-center gap-2.5">
+          <span class="rec-live"></span>
+          <div class="min-w-0 flex-1">
+            <p class="truncate font-medium"><span class="rec-who"></span> <span class="rec-meta text-zinc-500"></span></p>
+            <p class="rec-last truncate text-xs text-zinc-400"></p>
+          </div>
+          <button data-a="discard" class="icon-btn h-8 w-8" title="Discard this recording"><i data-icon="trash" class="h-3.5 w-3.5"></i></button>
+          <button data-a="stop" class="btn-primary rec-stop h-8 px-3 text-xs">Stop &amp; save</button>
+        </div>
+      </div>
+      <div id="flowPop" class="pop rounded-xl border border-blue-400/60 bg-zinc-900/95 p-3 text-[13px] text-zinc-200 shadow-2xl backdrop-blur" hidden></div>
       <div id="toasts" class="pointer-events-none absolute inset-x-4 bottom-16 z-20 flex flex-col items-center gap-2"></div>
     </section>

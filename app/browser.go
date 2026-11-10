@@ -53,6 +53,7 @@ type BrowserOptions struct {
 	DownloadDir   string // where Chrome saves downloads (also readable by browser_file_upload)
 	UploadDir     string // files the agent may upload
 	StateDir      string // saved cookie/storage states (browser_state)
+	FlowDir       string // recorded flows (browser_get_flow / browser_run_flow)
 }
 
 // View is the size and image quality of the shared screen.
@@ -81,6 +82,7 @@ type Tab struct {
 	fresh                   bool // first page of a new tab: drop the about:blank history entry once it commits
 	navSeq                  int  // newest refreshNav wins
 	lastAudio               time.Time
+	recScript               page.ScriptIdentifier // the flow recorder, while a recording is on
 
 	obs *observer // console messages and network requests of this tab
 }
@@ -130,9 +132,10 @@ type Browser struct {
 	nmu       sync.Mutex
 	notifying bool
 
-	ua  string    // Chrome's normal user agent (what "no emulation" means)
-	emu Emulation // device emulation, guarded by mu
-	dl  *downloads
+	ua    string    // Chrome's normal user agent (what "no emulation" means)
+	emu   Emulation // device emulation, guarded by mu
+	dl    *downloads
+	recOn bool // a flow is being recorded: every tab runs the recorder (guarded by mu)
 }
 
 // Binary packet types sent to the web clients (first byte).
@@ -393,7 +396,7 @@ func startBrowser(hub *Hub, opt BrowserOptions) (*Browser, error) {
 		dl:        newDownloads(),
 		recovered: map[string]time.Time{},
 	}
-	for _, d := range []string{opt.DownloadDir, opt.UploadDir, opt.StateDir} {
+	for _, d := range []string{opt.DownloadDir, opt.UploadDir, opt.StateDir, opt.FlowDir} {
 		if d != "" {
 			os.MkdirAll(d, 0o700)
 		}
@@ -1038,6 +1041,9 @@ func (b *Browser) attach(id, openerID string, opened bool) (*Tab, error) {
 			return nil, err
 		}
 	}
+	if b.recording() { // a tab opened during a recording is recorded too
+		b.recInstall(t)
+	}
 
 	b.mu.Lock()
 	i := len(b.tabs)
@@ -1310,6 +1316,13 @@ func (b *Browser) tabListener(t *Tab) func(ev any) {
 				b.onAudio(t, e.Payload)
 			case metaBinding:
 				b.onMeta(t, e.Payload)
+			case recBinding:
+				b.onRec(t, e.Payload)
+			}
+
+		case *page.EventNavigatedWithinDocument: // single-page apps change the address without loading
+			if string(e.FrameID) == t.id {
+				go b.onPageChange(t, e.URL)
 			}
 
 		case *page.EventFrameNavigated:
@@ -1327,6 +1340,7 @@ func (b *Browser) tabListener(t *Tab) func(ev any) {
 			}
 			b.mu.Unlock()
 			b.notify()
+			go b.onPageChange(t, e.Frame.URL)
 			if reset { // a new tab starts at about:blank; going "back" there makes no sense
 				go func() {
 					ctx, cancel := cmdCtx(t.ctx)

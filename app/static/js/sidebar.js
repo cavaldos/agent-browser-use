@@ -21,7 +21,9 @@ function showPane(p) {
   $$(".side-tab").forEach((b) => b.classList.toggle("active", b.dataset.pane === p));
   $("#chatPane").hidden = p !== "chat";
   $("#settingsPane").hidden = p !== "settings";
+  $("#flowsPane").hidden = p !== "flows";
   if (p === "settings") renderStates();
+  if (p === "flows") renderFlows();
   if (p === "chat") { setUnread(0); scrollChat(true); }
 }
 const chatVisible = () => sidebarOpen() && pane === "chat";

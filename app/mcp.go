@@ -42,6 +42,7 @@ Files: browser_downloads waits for/reads downloaded files; browser_file_upload f
 Logins: browser_cookies, browser_storage and browser_state (save/load a whole session by name, or export/import sessions as a JSON file to move them between machines). browser_snapshot_diff shows what changed on the page. browser_emulate switches to a phone/tablet or changes locale, dark mode, location and network speed.
 People can chat with you from the viewer: when idle, call browser_read_chat (time: 60) to wait for messages written to you with @<your name> or @agent, and answer with browser_say.
 Multi-agent: to run sub-agents in parallel, call browser_tabs {action:"new", background:true, url} once per sub-agent and give each its tabId. A sub-agent passes tabId on every browser_* call; it then has its own cursor, refs and snapshots, and never touches other tabs. Calls on different tabs run concurrently, calls on the same tab run in order. Sub-agents may also share a tab: give each a distinct "agent" name; to run a multi-step sequence that depends on page state (pick a tool, then draw), wrap it in browser_lock_tab / browser_unlock_tab.
+Recorded flows: when a person's message contains an id like flow-3fa9c1 (often nothing else), it names a flow they recorded in the viewer. Look it up with browser_get_flow {flowId}, then do what they ask with it: replay it with browser_run_flow (repeat, inputs to change typed text), or follow its steps yourself to adapt them. With only the id and no other request, replay it once.
 If a tool says the agent is blocked, a person clicked "Block agent": wait, or ask them (browser_say) to click "Unblock".`
 
 // ---------- JSON-RPC ----------
@@ -208,6 +209,19 @@ var tools = []tool{
 	{Name: "browser_get_element", Title: "Get a picked element", Annotations: readOnly,
 		Description: "Look up an element a person picked in the viewer with the Pick tool. They give you a code like \"el-3f9a\". Returns its ref (usable with browser_click, browser_type…), role, name, text, selector and HTML.",
 		InputSchema: schema(map[string]any{"code": str("The code shown in the viewer, e.g. \"el-3f9a\"")}, "code")},
+	{Name: "browser_get_flow", Title: "Read a recorded flow", Annotations: readOnly,
+		Description: "Read a flow a person recorded in the viewer with the Record button: every click, typed text, choice, key and page change, in order. They give you an id like \"flow-3fa9c1\", often on its own: whenever a message contains such an id, call this tool with it first. " +
+			"Returns the numbered steps, each with the element's role and name (as in browser_snapshot) plus fallback hints. Replay it with browser_run_flow, or follow the steps yourself to adapt them. Without flowId: lists the recorded flows.",
+		InputSchema: schema(map[string]any{"flowId": str("The flow id shown in the viewer, e.g. \"flow-3fa9c1\"; omit to list all flows")})},
+	{Name: "browser_run_flow", Title: "Replay a recorded flow",
+		Description: "Replay a flow a person recorded (see browser_get_flow): opens its start page, then does every step again, finding each element anew on the page. " +
+			"Use repeat to run it several times, and inputs to change what a step types or chooses (by step number). Stops at the first step that fails and says which, so you can finish it yourself.",
+		InputSchema: schema(map[string]any{
+			"flowId":    str("The flow id, e.g. \"flow-3fa9c1\""),
+			"repeat":    map[string]any{"type": "number", "description": "How many times to run the flow (default 1, max 50); each run starts from the start page"},
+			"inputs":    map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Text to type or option to choose instead of the recorded one, by step number, e.g. {\"3\": \"new search\"}. Required for password steps (passwords are not recorded)"},
+			"skipStart": map[string]any{"type": "boolean", "description": "Start from the current page instead of opening the flow's start page"},
+		}, "flowId")},
 	{Name: "browser_hover", Title: "Hover", Description: "Move the mouse over an element (opens hover menus, tooltips…).",
 		InputSchema: schema(map[string]any{"element": elementProp, "ref": refProp}, "element", "ref")},
 	{Name: "browser_type", Title: "Type text", Description: "Type a whole piece of text in one call (never press letters one by one with browser_press_key). With ref: clicks that field first. Without ref: types into the field that has focus (e.g. after pressing Tab). Replaces the current content unless clear is false.",
@@ -370,7 +384,7 @@ var tools = []tool{
 			"network":     map[string]any{"type": "string", "enum": []string{"online", "offline", "slow-3g", "fast-3g", "4g"}},
 		})},
 	{Name: "browser_read_chat", Title: "Read the room chat", Annotations: readOnly,
-		Description: "Read messages people wrote to you in the viewer's chat with @agent (people address you by your client name, e.g. @opencode, or @agent for every agent; only new ones since your last read; all=true shows the whole chat). With time (seconds, max 60) it waits for a new message when there is none. Answer with browser_say. Messages may contain picked-element codes like el-3f9a: look them up with browser_get_element.",
+		Description: "Read messages people wrote to you in the viewer's chat with @agent (people address you by your client name, e.g. @opencode, or @agent for every agent; only new ones since your last read; all=true shows the whole chat). With time (seconds, max 60) it waits for a new message when there is none. Answer with browser_say. Messages may contain picked-element codes like el-3f9a: look them up with browser_get_element; and recorded flow ids like flow-3fa9c1: read them with browser_get_flow.",
 		InputSchema: schema(map[string]any{
 			"time": map[string]any{"type": "number", "description": "Seconds to wait for a new message if there is none (default 0, max 60)"},
 			"all":  map[string]any{"type": "boolean", "description": "Show the whole chat, not only new messages for you"},
@@ -384,30 +398,34 @@ var tools = []tool{
 }
 
 type toolArgs struct {
-	URL          string   `json:"url"`
-	Element      string   `json:"element"`
-	Ref          string   `json:"ref"`
-	DoubleClick  bool     `json:"doubleClick"`
-	Button       string   `json:"button"`
-	Text         string   `json:"text"`
-	Submit       bool     `json:"submit"`
-	Clear        *bool    `json:"clear"`
-	Key          string   `json:"key"`
-	Values       []string `json:"values"`
-	Direction    string   `json:"direction"`
-	Amount       float64  `json:"amount"`
-	StartElement string   `json:"startElement"`
-	StartRef     string   `json:"startRef"`
-	EndElement   string   `json:"endElement"`
-	EndRef       string   `json:"endRef"`
-	TextGone     string   `json:"textGone"`
-	Time         float64  `json:"time"`
-	Function     string   `json:"function"`
-	Action       string   `json:"action"`
-	Index        *float64 `json:"index"`
-	Message      string   `json:"message"`
-	Selector     string   `json:"selector"`
-	Code         string   `json:"code"`
+	URL          string            `json:"url"`
+	Element      string            `json:"element"`
+	Ref          string            `json:"ref"`
+	DoubleClick  bool              `json:"doubleClick"`
+	Button       string            `json:"button"`
+	Text         string            `json:"text"`
+	Submit       bool              `json:"submit"`
+	Clear        *bool             `json:"clear"`
+	Key          string            `json:"key"`
+	Values       []string          `json:"values"`
+	Direction    string            `json:"direction"`
+	Amount       float64           `json:"amount"`
+	StartElement string            `json:"startElement"`
+	StartRef     string            `json:"startRef"`
+	EndElement   string            `json:"endElement"`
+	EndRef       string            `json:"endRef"`
+	TextGone     string            `json:"textGone"`
+	Time         float64           `json:"time"`
+	Function     string            `json:"function"`
+	Action       string            `json:"action"`
+	Index        *float64          `json:"index"`
+	Message      string            `json:"message"`
+	Selector     string            `json:"selector"`
+	Code         string            `json:"code"`
+	FlowID       string            `json:"flowId"`
+	Repeat       float64           `json:"repeat"`
+	Inputs       map[string]string `json:"inputs"`
+	SkipStart    bool              `json:"skipStart"`
 
 	Level         string       `json:"level"`
 	Limit         float64      `json:"limit"`
@@ -460,7 +478,7 @@ type toolArgs struct {
 
 // inputTools act on the page with the mouse or keyboard; they run one at a time per tab.
 var inputTools = map[string]bool{"browser_click": true, "browser_drag": true, "browser_hover": true, "browser_type": true,
-	"browser_press_key": true, "browser_scroll": true, "browser_select_option": true}
+	"browser_press_key": true, "browser_scroll": true, "browser_select_option": true, "browser_run_flow": true}
 
 func (s *MCPServer) callTool(name string, raw json.RawMessage, seat *Seat) toolResult {
 	a := s.agent
@@ -566,6 +584,15 @@ func (s *MCPServer) callTool(name string, raw json.RawMessage, seat *Seat) toolR
 			return errorResult(err)
 		}
 		return textResult(out)
+	case "browser_get_flow":
+		out, err := a.GetFlow(args.FlowID)
+		if err != nil {
+			return errorResult(err)
+		}
+		return textResult(out)
+	case "browser_run_flow":
+		out, err := a.RunFlow(args.FlowID, int(args.Repeat), args.Inputs, args.SkipStart)
+		return withSnapshot("Flow "+normFlowID(args.FlowID)+" finished", out, err)
 	case "browser_hover":
 		return withSnapshot("Hovered "+cmpOr(args.Element, args.Ref), "", a.Hover(args.Ref, args.Element))
 	case "browser_type":

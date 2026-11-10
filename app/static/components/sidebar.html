@@ -4,6 +4,7 @@
     <div class="flex h-12 shrink-0 items-center gap-2 border-b border-white/[.06] px-3">
       <div class="flex flex-1 rounded-lg bg-white/[.04] p-1 ring-1 ring-inset ring-white/[.06]">
         <button data-pane="chat" class="side-tab active"><i data-icon="chat" class="h-3.5 w-3.5"></i>Chat</button>
+        <button data-pane="flows" class="side-tab"><i data-icon="record" class="h-3.5 w-3.5"></i>Flows<span id="flowsTabDot" class="rec-ind" hidden></span></button>
         <button data-pane="settings" class="side-tab"><i data-icon="settings" class="h-3.5 w-3.5"></i>Settings</button>
       </div>
       <button id="sidebarClose" class="icon-btn drawer-only h-8 w-8" title="Close"><i data-icon="x" class="h-4 w-4"></i></button>
@@ -23,6 +24,22 @@
           <button class="icon-btn h-8 w-8 text-indigo-300 hover:text-indigo-200" title="Send"><i data-icon="send" class="h-4 w-4"></i></button>
         </div>
       </form>
+    </div>
+
+    <!-- Flows: recorded flows (list, then one flow's steps), recorded with the red button -->
+    <div id="flowsPane" class="flex min-h-0 flex-1 flex-col" hidden>
+      <div id="flowListView" class="flex min-h-0 flex-1 flex-col">
+        <div class="shrink-0 space-y-2 border-b border-white/[.06] p-3">
+          <button id="flowRecBtn" class="btn-primary flow-rec h-9 w-full text-[13px]"><span class="rec-dot"></span><span class="txt">Record a new flow</span></button>
+          <div class="flex gap-2">
+            <input id="flowSearch" class="h-8 min-w-0 flex-1 rounded-lg border border-white/[.08] bg-zinc-900/80 px-2.5 text-[13px] outline-none placeholder:text-zinc-500 focus:border-indigo-400/50" placeholder="Search by name, id or site…" autocomplete="off">
+            <button id="flowImportBtn" class="btn-ghost h-8 shrink-0 px-2.5 text-xs" title="Import a flow file (.json)"><i data-icon="upload" class="h-3.5 w-3.5"></i>Import</button>
+            <input id="flowImportFile" type="file" accept="application/json,.json" hidden>
+          </div>
+        </div>
+        <div id="flowList" class="min-h-0 flex-1 space-y-2 overflow-y-auto p-3"></div>
+      </div>
+      <div id="flowDetail" class="flex min-h-0 flex-1 flex-col" hidden></div>
     </div>
 
     <div id="settingsPane" class="flex-1 space-y-6 overflow-y-auto p-4" hidden>

@@ -37,6 +37,7 @@ https://github.com/user-attachments/assets/19edb4dd-3e3f-45e3-8809-b27a6c31be58
 - **Live viewer** — watch the page stream in your browser, with the agent's cursor, captions and chat log.
 - **Shared browser room** — you and the agent use the same Chrome; take control at any time, or block the agent.
 - **Pick an element** — click the pick button, point at anything on the page and get a short code (e.g. `el-1d2a`). Paste it to your coding agent, which looks the element up with `browser_get_element` and can act on it right away.
+- **Record a flow** — press the red record button, do a task in the browser, then stop. You get a flow id (e.g. `flow-3fa9c1`): paste just the id to your agent, which looks it up with `browser_get_flow` and replays it with `browser_run_flow` (repeat it N times, or change what gets typed with `inputs`) or adapts it to what you ask. The **Flows** tab in the sidebar lists your flows: view and edit their steps, rename, replay, export/import or delete them. Passwords are never stored: the agent must be given them at replay time.
 - **Persistent logins** — cookies live in a profile folder, so you sign in once and the agent reuses the session.
 - **No heavy dependencies** — no Docker, X server or video encoder needed. Docker is available if you prefer it.
 
@@ -201,6 +202,23 @@ Then open **http://localhost:3000** to watch the agent work.
 | `browser_cookies` / `browser_storage` / `browser_state` | Read and change cookies and localStorage/sessionStorage; save and restore a whole login session by name |
 | `browser_snapshot_diff` | Only what changed on the page since the last snapshot or a named baseline |
 | `browser_emulate` | Phone/tablet presets, screen size, pixel ratio, touch, user agent, locale, time zone, dark mode, GPS location, network speed |
+| `browser_get_flow` | Read a flow a person recorded (by its id, e.g. `flow-3fa9c1`), or list all flows |
+| `browser_run_flow` | Replay a recorded flow, optionally several times, with changed inputs (`inputs`) |
+
+### Recorded flows
+
+Record a task once, then let the agent repeat it or adapt it:
+
+1. Press the red record button under the screen and use the browser as usual (clicks, typing, choices in lists, keys, links, tabs).
+2. Press **Stop & save**. You get an id such as `flow-3fa9c1`.
+3. Paste the id to your agent with what you want, e.g. "flow-3fa9c1, do it for these three names". Alone, the id replays the flow once.
+
+The agent finds the flow with `browser_get_flow`, then replays it with `browser_run_flow` or follows its steps when the job needs changes. Actions the agent takes itself are not recorded.
+
+- **Passwords are never stored.** A password step needs its value passed in `inputs` at replay time, or a saved login (`browser_state`).
+- **Flows tab** (sidebar): list, search, rename, view and edit steps, remove steps, replay from the viewer, export and import as `.json`, delete.
+- Flows are saved in the `flows/` folder next to the browser profile (change it with `-flows <folder>`).
+- Not recorded: hover-only menus, scrolling, and anything inside an iframe.
 
 See [docs/GUIDE.md](docs/GUIDE.md) for the full tool reference, options, the shared browser room, security and limitations.
 

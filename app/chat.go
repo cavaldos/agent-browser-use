@@ -309,7 +309,7 @@ func formatChat(msgs []ChatMsg, all bool, s *Seat) string {
 		}
 		fmt.Fprintf(&b, "- [%s] %s%s: %s\n", time.UnixMilli(m.Time).Format("15:04:05"), m.User, to, m.Text)
 	}
-	b.WriteString("\nReply with browser_say. For an element code like el-3f9a, call browser_get_element.\n")
+	b.WriteString("\nReply with browser_say. For an element code like el-3f9a, call browser_get_element; for a flow id like flow-3fa9c1, call browser_get_flow.\n")
 	return b.String()
 }
 

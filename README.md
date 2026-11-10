@@ -94,23 +94,18 @@ winget install Hibbiki.Chromium
 
 ## Connecting a coding agent (MCP)
 
-Start the server (`./agent-browser-use`), then point your agent at `http://localhost:3000/mcp`. New to MCP, or want the
-stdio mode? Read the [general guide](docs/MCP.md). If you started the server with `-pw your-password`, use the
-**With password** snippets below.
+Start the server with a password (`./agent-browser-use -pw your-password`), then point your agent at
+`http://localhost:3000/mcp`. New to MCP, or want the stdio mode? Read the [general guide](docs/MCP.md).
+
+> **No password?** Start the server without `-pw`, then delete the `Authorization` header / token lines in the snippets below.
 
 ### Claude Code
-
-```sh
-claude mcp add --transport http agent-browser http://localhost:3000/mcp
-```
-
-With password:
 
 ```sh
 claude mcp add --transport http agent-browser http://localhost:3000/mcp --header "Authorization: Bearer your-password"
 ```
 
-Or in a project `.mcp.json` (add `headers` for the password):
+Or in a project `.mcp.json`:
 
 ```json
 {
@@ -128,14 +123,7 @@ Check it with `claude mcp list` or `/mcp`.
 
 ### Codex (OpenAI)
 
-`~/.codex/config.toml` (or `.codex/config.toml` in a trusted project):
-
-```toml
-[mcp_servers.agent-browser]
-url = "http://localhost:3000/mcp"
-```
-
-With password. Keep it in an environment variable so it isn't written in the file:
+`~/.codex/config.toml` (or `.codex/config.toml` in a trusted project). The password stays in an environment variable so it isn't written in the file:
 
 ```toml
 [mcp_servers.agent-browser]
@@ -160,21 +148,6 @@ Restart Codex after editing the file.
     "agent-browser": {
       "type": "remote",
       "url": "http://localhost:3000/mcp",
-      "enabled": true
-    }
-  }
-}
-```
-
-With password:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "agent-browser": {
-      "type": "remote",
-      "url": "http://localhost:3000/mcp",
       "enabled": true,
       "headers": { "Authorization": "Bearer your-password" }
     }
@@ -190,16 +163,6 @@ Once MCP is enabled, use the common `mcpServers` format:
 ```json
 {
   "mcpServers": {
-    "agent-browser": { "type": "http", "url": "http://localhost:3000/mcp" }
-  }
-}
-```
-
-With password:
-
-```json
-{
-  "mcpServers": {
     "agent-browser": {
       "type": "http",
       "url": "http://localhost:3000/mcp",
@@ -211,7 +174,7 @@ With password:
 
 ### Other agents
 
-Cursor, VS Code, Windsurf, Gemini CLI, Cline, Zed, Claude Desktop and more (all with password setup):
+Cursor, VS Code, Windsurf, Gemini CLI, Cline, Zed, Claude Desktop and more:
 **[docs/MCP-CLIENTS.md](docs/MCP-CLIENTS.md)**.
 
 ### Verify the connection

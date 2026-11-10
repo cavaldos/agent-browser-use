@@ -67,6 +67,8 @@ the viewer at **http://localhost:3000** opens in your default browser.
 }
 ```
 
+**Password-protected server:** see [MCP.md](MCP.md#password).
+
 In this mode, cookies/logins and chat history are stored in `~/.agent-browser-use/`.
 Sometimes a server is already running on the port, for example because you started Option 2 or another agent
 session is open. Then `mcp` just forwards to that server, so everyone shares one browser.

@@ -814,8 +814,9 @@ func readLines(r io.Reader, f func([]byte)) {
 	}
 }
 
-// probeMCP reports whether an agent-browser-use server already answers at u.
-func probeMCP(u string) bool {
+// probeMCP reports whether an agent-browser-use server already answers at u with the
+// current password. needAuth is true when one answers but rejected our password.
+func probeMCP(u string) (ok, needAuth bool) {
 	c := http.Client{Timeout: 2 * time.Second}
 	req, _ := http.NewRequest(http.MethodPost, u, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"ping"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -824,11 +825,14 @@ func probeMCP(u string) bool {
 	}
 	resp, err := c.Do(req)
 	if err != nil {
-		return false
+		return false, false
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized && strings.Contains(resp.Header.Get("WWW-Authenticate"), "agent-browser-use") {
+		return false, true
+	}
 	var r rpcResponse
-	return resp.StatusCode == http.StatusOK && json.NewDecoder(resp.Body).Decode(&r) == nil && r.Error == nil
+	return resp.StatusCode == http.StatusOK && json.NewDecoder(resp.Body).Decode(&r) == nil && r.Error == nil, false
 }
 
 // proxyStdio forwards stdin messages to a running server and writes its answers to stdout.

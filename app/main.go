@@ -589,6 +589,9 @@ func main() {
 	doUpdate := fl.Bool("update", false, "update this program to the latest release and exit")
 	fl.BoolVar(doUpdate, "u", false, "update to the latest release (short for -update)")
 	fl.Parse(args)
+	if authPassword == "" { // mcp.json can set it with "env": {"AGENT_BROWSER_USE_PASSWORD": "..."}
+		authPassword = os.Getenv(passwordEnv)
+	}
 	if *showVersion {
 		fmt.Fprintln(os.Stdout, appName, version)
 		return
@@ -627,9 +630,28 @@ func main() {
 	local := fmt.Sprintf("http://localhost:%d", *port)
 	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", *port))
 	if err != nil {
-		if stdio && probeMCP(local+"/mcp") { // another copy already runs the browser: use it
-			proxyStdio(local + "/mcp")
-			return
+		if stdio {
+			ok, needAuth := probeMCP(local + "/mcp")
+			// A running copy wants a password we don't have (or the wrong one): ask the person.
+			for try := 0; needAuth && try < 3; try++ {
+				msg := "Agent Browser Use is password protected. Enter the password:"
+				if password() != "" {
+					msg = "Wrong password. Enter the password for Agent Browser Use:"
+				}
+				pw := askPassword(msg)
+				if pw == "" {
+					break
+				}
+				setPassword(pw)
+				ok, needAuth = probeMCP(local + "/mcp")
+			}
+			if ok { // another copy already runs the browser: use it
+				proxyStdio(local + "/mcp")
+				return
+			}
+			if needAuth {
+				log.Fatalf("The server on port %d needs a password. Set %s in the MCP config (\"env\") or pass -pw.", *port, passwordEnv)
+			}
 		}
 		log.Fatalf("Port %d is busy: %v (use -port)", *port, err)
 	}

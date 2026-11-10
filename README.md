@@ -94,7 +94,9 @@ winget install Hibbiki.Chromium
 
 ## Connecting a coding agent (MCP)
 
-Once the server is running on port 3000, point your agent at `http://localhost:3000/mcp`.
+Start the server (`./agent-browser-use`), then point your agent at `http://localhost:3000/mcp`. New to MCP, or want the
+stdio mode? Read the [general guide](docs/MCP.md). If you started the server with `-pw your-password`, use the
+**With password** snippets below.
 
 ### Claude Code
 
@@ -102,35 +104,54 @@ Once the server is running on port 3000, point your agent at `http://localhost:3
 claude mcp add --transport http agent-browser http://localhost:3000/mcp
 ```
 
-To share the setup with a team, put it in a project `.mcp.json`:
+With password:
+
+```sh
+claude mcp add --transport http agent-browser http://localhost:3000/mcp --header "Authorization: Bearer your-password"
+```
+
+Or in a project `.mcp.json` (add `headers` for the password):
 
 ```json
 {
   "mcpServers": {
     "agent-browser": {
       "type": "http",
-      "url": "http://localhost:3000/mcp"
+      "url": "http://localhost:3000/mcp",
+      "headers": { "Authorization": "Bearer your-password" }
     }
   }
 }
 ```
 
-Check it with `claude mcp list` or `/mcp` inside Claude Code.
+Check it with `claude mcp list` or `/mcp`.
 
 ### Codex (OpenAI)
 
-Codex reads MCP servers from `~/.codex/config.toml` (or `.codex/config.toml` in a trusted project):
+`~/.codex/config.toml` (or `.codex/config.toml` in a trusted project):
 
 ```toml
 [mcp_servers.agent-browser]
 url = "http://localhost:3000/mcp"
 ```
 
+With password. Keep it in an environment variable so it isn't written in the file:
+
+```toml
+[mcp_servers.agent-browser]
+url = "http://localhost:3000/mcp"
+bearer_token_env_var = "AGENT_BROWSER_USE_PASSWORD"
+```
+
+```sh
+export AGENT_BROWSER_USE_PASSWORD=your-password
+```
+
 Restart Codex after editing the file.
 
 ### OpenCode
 
-OpenCode reads MCP servers from the `mcp` key of `opencode.json` (in the project root, or in the global config):
+`opencode.json` (project root or global config):
 
 ```json
 {
@@ -145,28 +166,53 @@ OpenCode reads MCP servers from the `mcp` key of `opencode.json` (in the project
 }
 ```
 
+With password:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "agent-browser": {
+      "type": "remote",
+      "url": "http://localhost:3000/mcp",
+      "enabled": true,
+      "headers": { "Authorization": "Bearer your-password" }
+    }
+  }
+}
+```
+
 ### Pi
 
-Pi's MCP support depends on the version you use: MCP is not part of every Pi install, and it is often added through an
-extension such as the community `pi-mcp-adapter`. Check the Pi documentation for your version. Once MCP is enabled,
-register the server with the URL `http://localhost:3000/mcp`. With the common `mcpServers` JSON format used by most adapters:
+MCP is not part of every Pi install; it is often added through an extension such as the community `pi-mcp-adapter`.
+Once MCP is enabled, use the common `mcpServers` format:
+
+```json
+{
+  "mcpServers": {
+    "agent-browser": { "type": "http", "url": "http://localhost:3000/mcp" }
+  }
+}
+```
+
+With password:
 
 ```json
 {
   "mcpServers": {
     "agent-browser": {
       "type": "http",
-      "url": "http://localhost:3000/mcp"
+      "url": "http://localhost:3000/mcp",
+      "headers": { "Authorization": "Bearer your-password" }
     }
   }
 }
 ```
 
-### Other clients (Cursor, Claude Desktop, VS Code, …)
+### Other agents
 
-Most clients accept the same `mcpServers` JSON as above, for example `~/.cursor/mcp.json`. VS Code uses a `"servers"`
-key and needs `"type": "http"`. Claude Desktop's config file only accepts stdio servers, so use a remote-MCP bridge
-such as `mcp-remote` to connect it to `http://localhost:3000/mcp`.
+Cursor, VS Code, Windsurf, Gemini CLI, Cline, Zed, Claude Desktop and more (all with password setup):
+**[docs/MCP-CLIENTS.md](docs/MCP-CLIENTS.md)**.
 
 ### Verify the connection
 

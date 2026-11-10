@@ -11,3 +11,5 @@ app/cloudflared/*
 !app/cloudflared/.gitkeep
 dist/
 .pi/
+# runtime log
+agent-browser-use.log

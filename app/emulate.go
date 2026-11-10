@@ -224,8 +224,21 @@ func (e Emulation) String() string {
 // metrics is the screen override for a tab: the shared screen size, unless a device sets its own.
 func metrics(v View, e Emulation) emulation.SetDeviceMetricsOverrideParams {
 	p := emulation.SetDeviceMetricsOverrideParams{Width: int64(v.Width), Height: int64(v.Height), DeviceScaleFactor: 1, Mobile: e.Mobile}
+	if e.Mobile {
+		p.ScreenWidth, p.ScreenHeight = int64(v.Width), int64(v.Height)
+	} else {
+		p.ScreenWidth, p.ScreenHeight = 1920, 1080
+		if int64(v.Width) > p.ScreenWidth {
+			p.ScreenWidth = int64(v.Width)
+		}
+		if int64(v.Height) > p.ScreenHeight {
+			p.ScreenHeight = int64(v.Height)
+		}
+	}
 	if e.Scale > 0 {
 		p.DeviceScaleFactor = e.Scale
+	} else if !e.Mobile {
+		p.DeviceScaleFactor = 2
 	}
 	return p
 }

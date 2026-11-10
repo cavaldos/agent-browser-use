@@ -248,6 +248,87 @@ const metaJS = `(() => {
   watch();
 })();`
 
+// stealthJS makes the headless/automated browser look like a normal Chrome to
+// page scripts: no webdriver flag, a real chrome object, plausible hardware,
+// screen and WebGL values, and outer window dimensions.
+const stealthJS = `(() => {
+  if (window.__abuStealth) return;
+  window.__abuStealth = true;
+  const def = (obj, key, value) => {
+    try { Object.defineProperty(obj, key, { get: () => value, configurable: true }); } catch (e) {}
+  };
+  try { def(Object.getPrototypeOf(navigator), 'webdriver', undefined); } catch (e) { def(navigator, 'webdriver', undefined); }
+  if (!window.chrome) window.chrome = {};
+  if (!window.chrome.runtime) window.chrome.runtime = { connect: function(){}, sendMessage: function(){} };
+  if (!window.chrome.loadTimes) window.chrome.loadTimes = function(){ return {}; };
+  if (!window.chrome.csi) window.chrome.csi = function(){ return {}; };
+  if (!window.chrome.app) window.chrome.app = { isInstalled: false };
+  def(navigator, 'languages', ['en-US', 'en']);
+  (function(){
+    const ua = navigator.userAgent || '';
+    if (/Mac/.test(ua)) def(navigator, 'platform', 'MacIntel');
+    else if (/Windows/.test(ua)) def(navigator, 'platform', 'Win32');
+    else if (/Linux/.test(ua)) def(navigator, 'platform', 'Linux x86_64');
+  })();
+  def(navigator, 'hardwareConcurrency', 8);
+  def(navigator, 'deviceMemory', 8);
+  def(navigator, 'maxTouchPoints', 0);
+  try {
+    const origQuery = navigator.permissions && navigator.permissions.query;
+    if (origQuery) {
+      navigator.permissions.query = (params) => {
+        return Promise.resolve({ state: 'prompt' });
+      };
+    }
+  } catch (e) {}
+  try {
+    def(screen, 'width', 1920);
+    def(screen, 'height', 1080);
+    def(screen, 'availWidth', 1920);
+    def(screen, 'availHeight', 1040);
+    def(screen, 'colorDepth', 24);
+    def(screen, 'pixelDepth', 24);
+  } catch (e) {}
+  (function(){ const ua = navigator.userAgent || ''; def(window, 'devicePixelRatio', /Mac/.test(ua) ? 2 : 1); })();
+  try {
+    const patchGL = (proto) => {
+      if (!proto || !proto.getParameter) return;
+      const orig = proto.getParameter;
+      proto.getParameter = function(param) {
+        const ua = navigator.userAgent || '';
+        if (param === 37445) return /Mac/.test(ua) ? 'Apple Inc.' : 'Google Inc.';
+        if (param === 37446) return /Mac/.test(ua) ? 'Apple GPU' : 'ANGLE (Google, Vulkan 1.3.0, SwiftShader)';
+        return orig.call(this, param);
+      };
+    };
+    patchGL(WebGLRenderingContext && WebGLRenderingContext.prototype);
+    patchGL(window.WebGL2RenderingContext && WebGL2RenderingContext.prototype);
+  } catch (e) {}
+  try {
+    if (navigator.userAgentData) {
+      def(navigator, 'userAgentData', {
+        brands: [{ brand: 'Google Chrome', version: '131' }, { brand: 'Chromium', version: '131' }, { brand: 'Not_A Brand', version: '24' }],
+        mobile: false,
+        platform: 'macOS',
+        getHighEntropyValues: function() {
+          return Promise.resolve({ architecture: 'arm', bitness: '64', brands: [{ brand: 'Google Chrome', version: '131' }], mobile: false, model: '', platform: 'macOS', platformVersion: '14.0.0', uaFullVersion: '131.0.0.0' });
+        }
+      });
+    }
+  } catch (e) {}
+  try {
+    if (navigator.connection) {
+      def(navigator.connection, 'rtt', 50);
+      def(navigator.connection, 'downlink', 10);
+      def(navigator.connection, 'effectiveType', '4g');
+    }
+  } catch (e) {}
+  try {
+    Object.defineProperty(window, 'outerWidth', { get: () => window.innerWidth + 16, configurable: true });
+    Object.defineProperty(window, 'outerHeight', { get: () => window.innerHeight + 85, configurable: true });
+  } catch (e) {}
+})();`
+
 func chromeFlags(opt BrowserOptions) []chromedp.ExecAllocatorOption {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("enable-automation", false),
@@ -256,7 +337,7 @@ func chromeFlags(opt BrowserOptions) []chromedp.ExecAllocatorOption {
 		chromedp.Flag("autoplay-policy", "no-user-gesture-required"),
 		// Fewer processes = less RAM. Keeping iframes in the page process also lets
 		// the audio tap reach embedded players.
-		chromedp.Flag("disable-gpu", true),
+		// keep GPU on so WebGL exists (a missing WebGL context is a headless tell)
 		chromedp.Flag("renderer-process-limit", "4"),
 		chromedp.Flag("disable-site-isolation-trials", true),
 		chromedp.Flag("disable-features", "Translate,BlinkGenPropertyTrees,SpareRendererForSitePerProcess,OptimizationHints,MediaRouter,DialMediaRouteProvider,IsolateOrigins,site-per-process,ChromeWhatsNewUI"),
@@ -933,6 +1014,10 @@ func (b *Browser) attach(id, openerID string, opened bool) (*Tab, error) {
 				return err
 			}
 			_, err := chromedp.Call(ctx, page.AddScriptToEvaluateOnNewDocument, page.AddScriptToEvaluateOnNewDocumentParams{Source: metaJS, RunImmediately: &run})
+			return err
+		},
+		func() error {
+			_, err := chromedp.Call(ctx, page.AddScriptToEvaluateOnNewDocument, page.AddScriptToEvaluateOnNewDocumentParams{Source: stealthJS, RunImmediately: &run})
 			return err
 		},
 		func() error {

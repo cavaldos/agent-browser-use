@@ -1,0 +1,42 @@
+name: Bug report
+description: Report a bug in agent-browser-use
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill out the details below.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `agent-browser-use --version` (or commit SHA)
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS / browser
+      description: e.g. macOS 14, Chrome 124
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to reproduce the issue
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior / logs
+    validations:
+      required: true

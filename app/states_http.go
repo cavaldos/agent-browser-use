@@ -33,18 +33,29 @@ func registerStateAPI(mux *http.ServeMux, mcp *MCPServer) {
 		writeJSON(w, map[string]any{"states": a.listStates()})
 	})
 
-	// GET /api/states/export[?name=foo] -> downloads a JSON bundle (all states if no name).
+	// GET /api/states/export?current=1 -> downloads every login of the running browser right now.
+	// GET /api/states/export[?name=foo] -> downloads saved state(s) (all of them if no name).
 	mux.HandleFunc("/api/states/export", func(w http.ResponseWriter, r *http.Request) {
 		a := agent(w)
 		if a == nil {
 			return
 		}
-		bundle, err := a.buildBundle(r.URL.Query().Get("name"))
+		q := r.URL.Query()
+		var bundle stateBundle
+		var err error
+		prefix := "sessions-"
+		if q.Get("current") != "" {
+			bundle, err = a.liveBundle()
+			prefix = "browser-sessions-"
+		} else {
+			bundle, err = a.buildBundle(q.Get("name"))
+		}
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		fname := "sessions-" + time.Now().Format("20060102-150405") + ".json"
+		a.announce("📤", fmt.Sprintf("Export %d session(s)", len(bundle.States)), nil)
+		fname := prefix + time.Now().Format("20060102-150405") + ".json"
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Content-Disposition", "attachment; filename=\""+fname+"\"")
 		enc := json.NewEncoder(w)
@@ -52,7 +63,8 @@ func registerStateAPI(mux *http.ServeMux, mcp *MCPServer) {
 		_ = enc.Encode(bundle)
 	})
 
-	// POST /api/states/import -> upload a bundle (multipart field "file", or a raw JSON body).
+	// POST /api/states/import -> upload a sessions file (multipart field "file", or a raw JSON body).
+	// Every session in it is saved and loaded into the browser right away.
 	mux.HandleFunc("/api/states/import", func(w http.ResponseWriter, r *http.Request) {
 		a := agent(w)
 		if a == nil {
@@ -77,13 +89,17 @@ func registerStateAPI(mux *http.ServeMux, mcp *MCPServer) {
 			http.Error(w, "no file uploaded", http.StatusBadRequest)
 			return
 		}
-		names, err := a.saveBundle(data, fallback)
-		if err != nil {
+		names, msg, err := a.importAndApply(data, fallback)
+		if names == nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		a.announce("📥", fmt.Sprintf("Import %d session(s)", len(names)), nil)
-		writeJSON(w, map[string]any{"imported": names})
+		if err != nil { // saved, but the browser did not take it
+			writeJSON(w, map[string]any{"imported": names, "loaded": false, "error": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]any{"imported": names, "loaded": true, "message": msg})
 	})
 
 	// POST /api/states/save {"name":"foo"} -> capture the browser's current login under a name.

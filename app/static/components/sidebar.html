@@ -77,19 +77,21 @@
       </section>
 
       <section>
-        <p class="label">Saved logins <span class="normal-case tracking-normal text-zinc-600">· cookies &amp; sessions</span></p>
+        <p class="label">Logins <span class="normal-case tracking-normal text-zinc-600">· cookies &amp; sessions</span></p>
         <div class="space-y-3">
-          <p class="text-xs text-zinc-500">Log in to a site in the browser, then save that session here so you can export it.</p>
+          <p class="text-xs text-zinc-500">Sign in to Facebook, Gmail… in this browser, then <b class="font-medium text-zinc-300">Export</b>: one JSON file holds every login. On another browser, <b class="font-medium text-zinc-300">Import</b> that file to be signed in without logging in again.</p>
+          <p class="text-xs text-zinc-500">Don’t press the site’s <b class="font-medium text-zinc-300">Log out</b> after exporting: it ends that session on the site’s server, and the file can no longer sign in.</p>
+          <div class="flex gap-2">
+            <button id="exportAllBtn" class="btn-ghost h-8 flex-1 px-3 text-xs" title="Download every login of this browser as one JSON file"><i data-icon="download" class="h-3.5 w-3.5"></i>Export logins</button>
+            <button id="importBtn" class="btn-ghost h-8 flex-1 px-3 text-xs" title="Load a sessions file into this browser (also takes Cookie-Editor and Playwright files)"><i data-icon="upload" class="h-3.5 w-3.5"></i>Import</button>
+            <input id="importFile" type="file" accept="application/json,.json" hidden>
+          </div>
+          <p class="pt-1 text-xs text-zinc-500">Saved snapshots — keep the current logins under a name to switch back later.</p>
           <form id="saveStateForm" class="flex gap-2">
-            <input id="saveStateName" class="h-8 min-w-0 flex-1 rounded-lg border border-white/[.08] bg-zinc-900/80 px-2.5 text-[13px] outline-none placeholder:text-zinc-500 focus:border-indigo-400/50" placeholder="Name, e.g. github" maxlength="64" autocomplete="off">
+            <input id="saveStateName" class="h-8 min-w-0 flex-1 rounded-lg border border-white/[.08] bg-zinc-900/80 px-2.5 text-[13px] outline-none placeholder:text-zinc-500 focus:border-indigo-400/50" placeholder="Name, e.g. work" maxlength="64" autocomplete="off">
             <button class="btn-ghost h-8 shrink-0 px-3 text-xs"><i data-icon="plus" class="h-3.5 w-3.5"></i>Save current</button>
           </form>
           <div id="stateList" class="space-y-2"></div>
-          <div class="flex gap-2">
-            <button id="exportAllBtn" class="btn-ghost h-8 flex-1 px-3 text-xs"><i data-icon="download" class="h-3.5 w-3.5"></i>Export all</button>
-            <button id="importBtn" class="btn-ghost h-8 flex-1 px-3 text-xs"><i data-icon="upload" class="h-3.5 w-3.5"></i>Import</button>
-            <input id="importFile" type="file" accept="application/json,.json" hidden>
-          </div>
           <p class="text-xs text-amber-400/80">Exported files contain login tokens — anyone with the file can sign in as you. Keep them private and delete when done.</p>
         </div>
       </section>

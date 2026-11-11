@@ -351,8 +351,8 @@ var tools = []tool{
 			"key":    str("Key (get, set, remove)"),
 			"value":  str("Value (set)"),
 		}, "action")},
-	{Name: "browser_state", Title: "Save and restore a session", Description: "Save the browser's login state (all cookies + localStorage/sessionStorage of the current site) under a name, and load it later, even after a restart. " +
-		"Use it to keep a login, switch between accounts, or return to a known state. export writes one state (or all of them, if no name) to a single JSON file you can carry to another machine; import reads such a file back so the sessions can be loaded there without logging in again. " +
+	{Name: "browser_state", Title: "Save and restore a session", Description: "Save the browser's login state (all cookies of every site + localStorage/sessionStorage of every site open in a tab) under a name, and load it later, even after a restart. " +
+		"Use it to keep a login, switch between accounts, or return to a known state. export writes one state (or all of them, if no name) to a single JSON file you can carry to another machine; import reads such a file back (also Cookie-Editor cookie lists and Playwright storageState files) so the sessions can be loaded there without logging in again. " +
 		"Saved and exported files hold secrets: delete states you no longer need.",
 		InputSchema: schema(map[string]any{
 			"action": map[string]any{"type": "string", "enum": []string{"save", "load", "list", "delete", "export", "import"}},

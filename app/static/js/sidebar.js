@@ -128,7 +128,7 @@ async function renderStates() {
   if (!states.length) {
     const p = document.createElement("p");
     p.className = "text-xs text-zinc-500";
-    p.textContent = "No saved logins yet. The agent saves one with browser_state after you log in.";
+    p.textContent = "No saved snapshots yet.";
     box.appendChild(p);
     return;
   }
@@ -137,7 +137,10 @@ async function renderStates() {
     row.className = "flex items-center gap-2 rounded-xl border border-white/[.06] bg-white/[.02] p-2.5";
     const info = document.createElement("div");
     info.className = "min-w-0 flex-1";
-    info.innerHTML = `<p class="truncate text-[13px] font-medium">${esc(s.name)}</p><p class="truncate text-xs text-zinc-500">${s.cookies} cookies · ${esc(s.origin || "—")}</p>`;
+    const sites = s.sites || [];
+    const shown = sites.slice(0, 3).join(", ") + (sites.length > 3 ? ` +${sites.length - 3}` : "");
+    info.title = sites.join("\n");
+    info.innerHTML = `<p class="truncate text-[13px] font-medium">${esc(s.name)}</p><p class="truncate text-xs text-zinc-500">${s.cookies} cookies · ${esc(shown || s.origin || "—")}</p>`;
     row.appendChild(info);
     row.appendChild(stateBtn("key", "Load into the browser", () => loadState(s.name)));
     row.appendChild(stateBtn("download", "Export this login", () => { location.href = "/api/states/export?name=" + encodeURIComponent(s.name); }));
@@ -182,7 +185,20 @@ $("#saveStateForm").onsubmit = async (e) => {
     renderStates();
   } catch (err) { toast(`Couldn’t save: ${String(err.message || err).trim()}`, "info"); }
 };
-$("#exportAllBtn").onclick = () => { location.href = "/api/states/export"; };
+// Export every login of the running browser. Fetched first so an error shows as a toast, not a page.
+$("#exportAllBtn").onclick = async () => {
+  try {
+    const r = await fetch("/api/states/export?current=1");
+    if (!r.ok) throw new Error(await r.text());
+    const name = (r.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || "browser-sessions.json";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(await r.blob());
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    toast("Exported your logins — keep the file private", "download");
+  } catch (err) { toast(`Export failed: ${String(err.message || err).trim()}`, "info"); }
+};
 $("#importBtn").onclick = () => $("#importFile").click();
 $("#importFile").onchange = async (e) => {
   const file = e.target.files[0];
@@ -190,11 +206,13 @@ $("#importFile").onchange = async (e) => {
   if (!file) return;
   const fd = new FormData();
   fd.append("file", file);
+  toast("Importing logins…", "upload");
   try {
     const r = await fetch("/api/states/import", { method: "POST", body: fd });
     if (!r.ok) throw new Error(await r.text());
-    const got = (await r.json()).imported || [];
-    toast(`Imported ${got.length} login(s)`, "upload");
+    const d = await r.json();
+    if (d.loaded) toast("Imported — you’re signed in", "key");
+    else toast(`Saved, but couldn’t load it: ${d.error || "unknown error"}`, "info");
     renderStates();
   } catch (err) { toast(`Import failed: ${String(err.message || err).trim()}`, "info"); }
 };

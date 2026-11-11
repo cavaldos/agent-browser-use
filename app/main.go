@@ -184,10 +184,28 @@ func (h *Hub) save() {
 
 // ---------- Sending ----------
 
+// trySend is for best-effort data (cursor moves, sound). It only queues while the
+// client has at least half its queue free, so a slow client can't fill the queue
+// and push out the messages that matter.
 func trySend(c *Client, m outMsg) {
+	if len(c.send) >= cap(c.send)/2 {
+		return // client too slow, drop
+	}
 	select {
 	case c.send <- m:
-	default: // client too slow, drop
+	default:
+	}
+}
+
+// sendImportant is for messages the page must not miss: people joining or leaving,
+// control, chat, tabs. If the client is so far behind that its queue is full, it is
+// disconnected; the page then reconnects and gets a full snapshot (init) again.
+func sendImportant(c *Client, m outMsg) {
+	select {
+	case c.send <- m:
+	default:
+		log.Printf("~ %s is too far behind, reconnecting it", c.user.Name)
+		c.conn.Close()
 	}
 }
 
@@ -195,8 +213,13 @@ func trySend(c *Client, m outMsg) {
 func (h *Hub) broadcast(m Msg, except *Client) {
 	b, _ := json.Marshal(m)
 	for c := range h.clients {
-		if c != except {
+		if c == except {
+			continue
+		}
+		if m.Type == "cursor" {
 			trySend(c, outMsg{data: b})
+		} else {
+			sendImportant(c, outMsg{data: b})
 		}
 	}
 }
@@ -208,7 +231,7 @@ func (h *Hub) sendTo(c *Client, m Msg) {
 		return
 	}
 	b, _ := json.Marshal(m)
-	trySend(c, outMsg{data: b})
+	sendImportant(c, outMsg{data: b})
 }
 
 func (h *Hub) systemChat(text string) {

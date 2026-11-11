@@ -135,10 +135,11 @@ type Browser struct {
 	nmu       sync.Mutex
 	notifying bool
 
-	ua    string    // Chrome's normal user agent (what "no emulation" means)
-	emu   Emulation // device emulation, guarded by mu
-	dl    *downloads
-	recOn bool // a flow is being recorded: every tab runs the recorder (guarded by mu)
+	ua     string             // Chrome's normal user agent (what "no emulation" means)
+	uaMeta *userAgentMetadata // its client hints, complete (stealth.go); nil = Chrome's own
+	emu    Emulation          // device emulation, guarded by mu
+	dl     *downloads
+	recOn  bool // a flow is being recorded: every tab runs the recorder (guarded by mu)
 }
 
 // Binary packet types sent to the web clients (first byte).
@@ -151,7 +152,7 @@ const audioBinding = "__tbAudioOut"
 
 const audioJS = `(() => {
   if (window.__tbAudio) return;
-  window.__tbAudio = true;
+  Object.defineProperty(window, '__tbAudio', { value: true });
   const Ctx = window.AudioContext || window.webkitAudioContext;
   if (!Ctx) return;
   const out = (s) => { const f = window.` + audioBinding + `; if (typeof f === 'function') f(s); };
@@ -198,11 +199,12 @@ const audioJS = `(() => {
   }
 
   // Web Audio: whatever the page sends to the speakers also goes to the tap.
-  AudioNode.prototype.connect = function (dest) {
+  const native = window.__abuNative || ((f) => f); // prints as the built-in (stealth.go)
+  AudioNode.prototype.connect = native({ connect(dest) {
     const r = connect.apply(this, arguments);
     try { if (dest instanceof AudioDestinationNode && this.context) connect.call(this, tap(this.context)); } catch (e) {}
     return r;
-  };
+  } }.connect, 'connect');
 
   // <audio> / <video>: route the element into our own context.
   let mctx = null;
@@ -217,7 +219,7 @@ const audioJS = `(() => {
     } catch (e) {}
   }
   const play = HTMLMediaElement.prototype.play;
-  HTMLMediaElement.prototype.play = function () { route(this); return play.apply(this, arguments); };
+  HTMLMediaElement.prototype.play = native({ play() { route(this); return play.apply(this, arguments); } }.play, 'play');
   document.addEventListener('play', (e) => route(e.target), true);
   document.querySelectorAll('audio,video').forEach((el) => { if (!el.paused) route(el); });
 })();`
@@ -227,7 +229,7 @@ const metaBinding = "__tbMetaOut"
 // Reports the page title and favicon whenever they change (Chrome sends no event for that).
 const metaJS = `(() => {
   if (window.top !== window || window.__tbMeta) return;
-  window.__tbMeta = true;
+  Object.defineProperty(window, '__tbMeta', { value: true });
   let last = '', timer = 0, obs = null;
   const icon = () => {
     const l = document.querySelector('link[rel~="icon"]');
@@ -252,87 +254,6 @@ const metaJS = `(() => {
   document.addEventListener('DOMContentLoaded', watch);
   window.addEventListener('load', soon);
   watch();
-})();`
-
-// stealthJS makes the headless/automated browser look like a normal Chrome to
-// page scripts: no webdriver flag, a real chrome object, plausible hardware,
-// screen and WebGL values, and outer window dimensions.
-const stealthJS = `(() => {
-  if (window.__abuStealth) return;
-  window.__abuStealth = true;
-  const def = (obj, key, value) => {
-    try { Object.defineProperty(obj, key, { get: () => value, configurable: true }); } catch (e) {}
-  };
-  try { def(Object.getPrototypeOf(navigator), 'webdriver', undefined); } catch (e) { def(navigator, 'webdriver', undefined); }
-  if (!window.chrome) window.chrome = {};
-  if (!window.chrome.runtime) window.chrome.runtime = { connect: function(){}, sendMessage: function(){} };
-  if (!window.chrome.loadTimes) window.chrome.loadTimes = function(){ return {}; };
-  if (!window.chrome.csi) window.chrome.csi = function(){ return {}; };
-  if (!window.chrome.app) window.chrome.app = { isInstalled: false };
-  def(navigator, 'languages', ['en-US', 'en']);
-  (function(){
-    const ua = navigator.userAgent || '';
-    if (/Mac/.test(ua)) def(navigator, 'platform', 'MacIntel');
-    else if (/Windows/.test(ua)) def(navigator, 'platform', 'Win32');
-    else if (/Linux/.test(ua)) def(navigator, 'platform', 'Linux x86_64');
-  })();
-  def(navigator, 'hardwareConcurrency', 8);
-  def(navigator, 'deviceMemory', 8);
-  def(navigator, 'maxTouchPoints', 0);
-  try {
-    const origQuery = navigator.permissions && navigator.permissions.query;
-    if (origQuery) {
-      navigator.permissions.query = (params) => {
-        return Promise.resolve({ state: 'prompt' });
-      };
-    }
-  } catch (e) {}
-  try {
-    def(screen, 'width', 1920);
-    def(screen, 'height', 1080);
-    def(screen, 'availWidth', 1920);
-    def(screen, 'availHeight', 1040);
-    def(screen, 'colorDepth', 24);
-    def(screen, 'pixelDepth', 24);
-  } catch (e) {}
-  (function(){ const ua = navigator.userAgent || ''; def(window, 'devicePixelRatio', /Mac/.test(ua) ? 2 : 1); })();
-  try {
-    const patchGL = (proto) => {
-      if (!proto || !proto.getParameter) return;
-      const orig = proto.getParameter;
-      proto.getParameter = function(param) {
-        const ua = navigator.userAgent || '';
-        if (param === 37445) return /Mac/.test(ua) ? 'Apple Inc.' : 'Google Inc.';
-        if (param === 37446) return /Mac/.test(ua) ? 'Apple GPU' : 'ANGLE (Google, Vulkan 1.3.0, SwiftShader)';
-        return orig.call(this, param);
-      };
-    };
-    patchGL(WebGLRenderingContext && WebGLRenderingContext.prototype);
-    patchGL(window.WebGL2RenderingContext && WebGL2RenderingContext.prototype);
-  } catch (e) {}
-  try {
-    if (navigator.userAgentData) {
-      def(navigator, 'userAgentData', {
-        brands: [{ brand: 'Google Chrome', version: '131' }, { brand: 'Chromium', version: '131' }, { brand: 'Not_A Brand', version: '24' }],
-        mobile: false,
-        platform: 'macOS',
-        getHighEntropyValues: function() {
-          return Promise.resolve({ architecture: 'arm', bitness: '64', brands: [{ brand: 'Google Chrome', version: '131' }], mobile: false, model: '', platform: 'macOS', platformVersion: '14.0.0', uaFullVersion: '131.0.0.0' });
-        }
-      });
-    }
-  } catch (e) {}
-  try {
-    if (navigator.connection) {
-      def(navigator.connection, 'rtt', 50);
-      def(navigator.connection, 'downlink', 10);
-      def(navigator.connection, 'effectiveType', '4g');
-    }
-  } catch (e) {}
-  try {
-    Object.defineProperty(window, 'outerWidth', { get: () => window.innerWidth + 16, configurable: true });
-    Object.defineProperty(window, 'outerHeight', { get: () => window.innerHeight + 85, configurable: true });
-  } catch (e) {}
 })();`
 
 func chromeFlags(opt BrowserOptions) []chromedp.ExecAllocatorOption {
@@ -369,8 +290,9 @@ func chromeFlags(opt BrowserOptions) []chromedp.ExecAllocatorOption {
 
 // Headless Chrome says "HeadlessChrome" in its user agent, and some sites block
 // that. Start Chrome once to read the real version, so the shared browser can
-// run with a normal user agent everywhere (tabs, popups, workers).
-func detectUserAgent(opt BrowserOptions) (string, error) {
+// run with a normal user agent everywhere (tabs, popups, workers), with the
+// client hints that go with it (see uaMetadata).
+func detectUserAgent(opt BrowserOptions) (string, *userAgentMetadata, error) {
 	actx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), chromeFlags(opt)...)
 	defer cancelAlloc()
 	ctx, cancel := chromedp.NewContext(actx)
@@ -379,13 +301,28 @@ func detectUserAgent(opt BrowserOptions) (string, error) {
 	defer tcancel()
 	v, err := chromedp.CallBrowser(tctx, browser.GetVersion, cdp.Empty{})
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	return strings.Replace(v.UserAgent, "HeadlessChrome", "Chrome", 1), nil
+	ua := strings.Replace(v.UserAgent, "HeadlessChrome", "Chrome", 1)
+	// The brands (with Chrome's own GREASE entry) and platform, as a page sees them.
+	// userAgentData only exists in secure contexts, which about:blank is not.
+	if _, err := chromedp.Call(tctx, page.Navigate, page.NavigateParams{URL: "chrome://version/"}); err != nil {
+		log.Println("chrome: client hints:", err)
+	}
+	type uaData struct {
+		Brands   []*emulation.UserAgentBrandVersion `json:"brands"`
+		Platform string                             `json:"platform"`
+	}
+	d, err := chromedp.Run(tctx, chromedp.Evaluate[*uaData](`navigator.userAgentData ? {brands: navigator.userAgentData.brands, platform: navigator.userAgentData.platform} : null`))
+	if err != nil || d == nil {
+		log.Println("chrome: no client hints to complete:", err)
+		return ua, nil, nil
+	}
+	return ua, uaMetadata(v.Product, d.Brands, d.Platform), nil
 }
 
 func startBrowser(hub *Hub, opt BrowserOptions) (*Browser, error) {
-	ua, err := detectUserAgent(opt)
+	ua, uaMeta, err := detectUserAgent(opt)
 	if err != nil {
 		return nil, err
 	}
@@ -396,6 +333,7 @@ func startBrowser(hub *Hub, opt BrowserOptions) (*Browser, error) {
 		view:      View{opt.Width, opt.Height, opt.Quality},
 		streams:   map[string]byte{},
 		ua:        ua,
+		uaMeta:    uaMeta,
 		dl:        newDownloads(),
 		recovered: map[string]time.Time{},
 	}
@@ -993,6 +931,10 @@ func (b *Browser) attach(id, openerID string, opened bool) (*Tab, error) {
 	b.mu.Unlock()
 	run := true
 	steps := []func() error{
+		func() error { // first, so it runs before every other script in the page (stealth.go)
+			_, err := chromedp.Call(ctx, page.AddScriptToEvaluateOnNewDocument, page.AddScriptToEvaluateOnNewDocumentParams{Source: stealthJS, RunImmediately: &run})
+			return err
+		},
 		func() error { // a background tab must still behave as focused, so parallel sub-agents can use it
 			_, err := chromedp.Call(ctx, emulation.SetFocusEmulationEnabled, emulation.SetFocusEmulationEnabledParams{Enabled: true})
 			return err
@@ -1012,6 +954,11 @@ func (b *Browser) attach(id, openerID string, opened bool) (*Tab, error) {
 			if emu != (Emulation{}) { // tabs opened later get the same device
 				return b.applyEmulation(t, v, emu)
 			}
+			if b.uaMeta != nil { // the full client hints of the normal user agent
+				if _, err := chromedp.Call(ctx, setUserAgentOverride, userAgentOverrideParams{UserAgent: b.ua, UserAgentMetadata: b.uaMeta}); err != nil {
+					return err
+				}
+			}
 			_, err := chromedp.Call(ctx, emulation.SetDeviceMetricsOverride, metrics(v, emu))
 			return err
 		},
@@ -1020,10 +967,6 @@ func (b *Browser) attach(id, openerID string, opened bool) (*Tab, error) {
 				return err
 			}
 			_, err := chromedp.Call(ctx, page.AddScriptToEvaluateOnNewDocument, page.AddScriptToEvaluateOnNewDocumentParams{Source: metaJS, RunImmediately: &run})
-			return err
-		},
-		func() error {
-			_, err := chromedp.Call(ctx, page.AddScriptToEvaluateOnNewDocument, page.AddScriptToEvaluateOnNewDocumentParams{Source: stealthJS, RunImmediately: &run})
 			return err
 		},
 		func() error { // getDisplayMedia gets the shared screen instead of a picker (share.go)

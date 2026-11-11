@@ -256,11 +256,16 @@ func (b *Browser) applyEmulation(t *Tab, v View, e Emulation) error {
 		ua = e.UserAgent
 	}
 	if ua != "" {
-		up := emulation.SetUserAgentOverrideParams{UserAgent: ua}
+		up := userAgentOverrideParams{UserAgent: ua}
+		if e.UserAgent == "" {
+			// Chrome's own user agent: without its client hints Chrome would stop
+			// sending Sec-CH-UA and empty navigator.userAgentData, which a real one never does.
+			up.UserAgentMetadata = b.uaMeta
+		}
 		if e.Locale != "" {
 			up.AcceptLanguage = strings.ReplaceAll(e.Locale, "_", "-")
 		}
-		chromedp.Call(ctx, emulation.SetUserAgentOverride, up)
+		chromedp.Call(ctx, setUserAgentOverride, up)
 	}
 	chromedp.Call(ctx, emulation.SetLocaleOverride, emulation.SetLocaleOverrideParams{Locale: e.Locale})
 	chromedp.Call(ctx, emulation.SetTimezoneOverride, emulation.SetTimezoneOverrideParams{TimezoneID: e.Timezone})

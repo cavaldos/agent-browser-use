@@ -23,7 +23,7 @@ const shareBinding = "__tbShareOut"
 
 const shareJS = `(() => {
   if (window.top !== window || window.__tbShare) return;
-  window.__tbShare = true;
+  Object.defineProperty(window, '__tbShare', { value: true });
   const md = navigator.mediaDevices;
   if (!md || !md.getDisplayMedia) return;
   const out = (s) => { const f = window.` + shareBinding + `; if (typeof f === 'function') f(s); };
@@ -119,11 +119,13 @@ const shareJS = `(() => {
     return 1;
   };
 
-  const wrapped = function getDisplayMedia(opts) { return start(opts || {}); };
+  const wrapped = { getDisplayMedia() { return start(arguments[0] || {}); } }.getDisplayMedia; // length 0, like the built-in
+  if (window.__abuNative) window.__abuNative(wrapped, 'getDisplayMedia');
   try {
-    Object.defineProperty(Object.getPrototypeOf(md), 'getDisplayMedia', { value: wrapped, configurable: true, writable: true });
+    Object.defineProperty(Object.getPrototypeOf(md), 'getDisplayMedia', { value: wrapped, configurable: true, writable: true, enumerable: true });
   } catch (e) { try { md.getDisplayMedia = wrapped; } catch (e2) {} }
   window.addEventListener('pagehide', stop);
+  for (const k of ['__tbShareFrame', '__tbShareAudio']) Object.defineProperty(window, k, { enumerable: false });
 })();`
 
 // shareOut pushes the shared screen into one sharing tab, one call at a time.

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agent Browser Use — MCP browser for AI coding agents</title>
+  <meta name="description" content="Let AI coding agents (Claude Code, Codex, OpenCode, Cursor…) drive a real browser over MCP, while you watch every step live and take over at any time." />
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; }
+    h1 { font-size: 2rem; }
+    code { background: rgba(127,127,127,.15); padding: .15rem .4rem; border-radius: .3rem; }
+    pre { background: rgba(127,127,127,.12); padding: 1rem; border-radius: .5rem; overflow-x: auto; }
+    a { color: #2563eb; }
+    .badge { display: inline-block; margin: .25rem .25rem 0 0; }
+  </style>
+</head>
+<body>
+  <h1>Agent Browser Use</h1>
+  <p>Let AI coding agents drive a real browser over <a href="https://modelcontextprotocol.io">MCP</a>, while you watch every step live in a web page and take over at any time.</p>
+  <p>
+    <a class="badge" href="https://github.com/cavaldos/agent-browser-use">GitHub</a>
+    <a class="badge" href="https://github.com/cavaldos/agent-browser-use/releases">Releases</a>
+  </p>
+  <h2>Quick start</h2>
+  <pre><code>curl -fsSL https://raw.githubusercontent.com/cavaldos/agent-browser-use/main/scripts/install.sh | sh
+agent-browser-use
+# Viewer: http://localhost:3000  |  MCP: http://localhost:3000/mcp</code></pre>
+  <h2>Features</h2>
+  <ul>
+    <li>Playwright-style MCP tools with element refs (<code>browser_snapshot</code>).</li>
+    <li>Live viewer: cursor, captions, step log, take-over / block agent.</li>
+    <li>Pick an element and share its code with your coding agent.</li>
+    <li>Record and replay flows (with inputs), export/import.</li>
+    <li>Persistent logins via profile folder; no Docker required.</li>
+  </ul>
+  <p>Full docs: <a href="https://github.com/cavaldos/agent-browser-use/blob/main/README.md">README</a> · <a href="https://github.com/cavaldos/agent-browser-use/blob/main/docs/MCP.md">MCP guide</a></p>
+</body>
+</html>

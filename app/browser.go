@@ -304,6 +304,7 @@ func chromeFlags(opt BrowserOptions) []chromedp.ExecAllocatorOption {
 // run with a normal user agent everywhere (tabs, popups, workers), with the
 // client hints that go with it (see uaMetadata).
 func detectUserAgent(opt BrowserOptions) (string, *userAgentMetadata, error) {
+	opt.Proxy = "" // only reads the version: no network, so no need to wait on the proxy/WARP
 	actx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), chromeFlags(opt)...)
 	defer cancelAlloc()
 	ctx, cancel := chromedp.NewContext(actx)
@@ -400,9 +401,13 @@ func (b *Browser) launch() error {
 		}
 		cancel()
 	}
-	if _, err := b.openTab(b.opt.StartURL); err != nil {
-		cancelAlloc()
-		return err
+	if t, err := b.openTab(b.opt.StartURL); err != nil {
+		if t == nil { // no tab at all: Chrome is not usable
+			cancelAlloc()
+			return err
+		}
+		// The tab exists but the start page was slow (e.g. WARP still connecting): it keeps loading.
+		log.Println("chrome: start page:", err)
 	}
 	// Our tabs live in the same window, so closing the startup tab keeps Chrome running.
 	ctx, cancel := cmdCtx(root)

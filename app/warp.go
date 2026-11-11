@@ -43,7 +43,6 @@ type warpAccount struct {
 	Endpoint   string `json:"endpoint"`    // ip:port
 	AddrV4     string `json:"addr_v4"`
 	AddrV6     string `json:"addr_v6"`
-	On         bool   `json:"on"` // the switch's last position, restored at start
 }
 
 const warpPeerKey = "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo="
@@ -67,19 +66,6 @@ func (w *warpTunnel) save(a *warpAccount) error {
 	os.MkdirAll(filepath.Dir(w.file), 0o755)
 	b, _ := json.MarshalIndent(a, "", "  ")
 	return os.WriteFile(w.file, b, 0o600)
-}
-
-// remember stores the switch position next to the account (if there is one).
-func (w *warpTunnel) remember(on bool) {
-	if a, err := w.load(); err == nil && a.On != on {
-		a.On = on
-		w.save(a)
-	}
-}
-
-func (w *warpTunnel) wasOn() bool {
-	a, err := w.load()
-	return err == nil && a.On
 }
 
 // register creates a free WARP account for a new WireGuard key.
@@ -154,7 +140,6 @@ func (w *warpTunnel) net() (*netstack.Net, error) {
 		if a, err = warpRegister(); err != nil {
 			return nil, err
 		}
-		a.On = true
 		if err := w.save(a); err != nil {
 			return nil, err
 		}

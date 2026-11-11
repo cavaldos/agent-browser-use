@@ -45,8 +45,7 @@ func newProxySwitch(raw, warpFile string) (*ProxySwitch, error) {
 	p := &ProxySwitch{conns: map[net.Conn]bool{}}
 	if raw == "" {
 		if warpFile != "" {
-			p.warp = &warpTunnel{file: warpFile}
-			p.on = p.warp.wasOn()
+			p.warp = &warpTunnel{file: warpFile} // starts off: the switch turns it on
 		}
 		return p, nil
 	}
@@ -289,7 +288,6 @@ func (p *ProxySwitch) Set(on bool) {
 					return
 				}
 			}
-			p.warp.remember(on)
 		}
 		p.Refresh()
 	}()
@@ -355,9 +353,13 @@ func (p *ProxySwitch) lookup() (ip, loc, warp string, err error) {
 
 // Watch keeps the IP fresh so the header always shows the current one.
 func (p *ProxySwitch) Watch() {
-	p.Refresh()
-	for range time.Tick(30 * time.Second) {
+	for {
 		p.Refresh()
+		wait := 30 * time.Second
+		if p.Status().Error != "" { // e.g. WARP still shaking hands: look again soon
+			wait = 5 * time.Second
+		}
+		time.Sleep(wait)
 	}
 }
 

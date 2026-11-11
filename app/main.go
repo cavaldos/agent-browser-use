@@ -589,6 +589,7 @@ func main() {
 	fl.StringVar(&bo.StartURL, "start", "https://www.google.com", "page for new tabs")
 	fl.StringVar(&bo.Profile, "profile", "chrome-profile", "folder for the shared browser's cookies/logins")
 	fl.StringVar(&bo.ChromePath, "chrome", "", "path to the browser executable (empty = auto-detect)")
+	proxyUp := fl.String("proxy", os.Getenv("AGENT_BROWSER_USE_PROXY"), "upstream SOCKS5 proxy for the shared browser only, e.g. socks5://127.0.0.1:40000 (empty = built-in Cloudflare WARP); the header switch turns it on/off")
 	engine := fl.String("engine", "auto", "browser to run: chromium, chrome, edge, brave, vivaldi, headless-shell (lightest); auto = Chromium, else the first one installed")
 	fl.StringVar(&bo.DownloadDir, "downloads", "", "folder for downloaded files (empty = \"downloads\" next to the profile folder)")
 	fl.StringVar(&bo.UploadDir, "uploads", "", "folder the agent may upload files from (empty = \"uploads\" next to the profile folder)")
@@ -682,6 +683,14 @@ func main() {
 	h.load()
 
 	mcp := &MCPServer{}
+	warpFile := "" // built-in WARP account, kept next to the browser profile
+	if !*noBrowser {
+		if abs, err := filepath.Abs(bo.Profile); err == nil {
+			warpFile = filepath.Join(filepath.Dir(abs), "warp.json")
+		}
+	}
+	px, pxAddr := startProxy(*proxyUp, warpFile)
+	bo.Proxy = pxAddr // Chrome talks to our local switch; "" = direct
 	if !*noBrowser {
 		eng, err := resolveEngine(*engine, bo.ChromePath)
 		if err != nil {
@@ -721,6 +730,7 @@ func main() {
 	registerStateAPI(mux, mcp)
 	registerFlowAPI(mux, h, mcp)
 	registerTunnelAPI(mux, tm)
+	registerProxyAPI(mux, px)
 	if !*noMCP {
 		mux.HandleFunc("/mcp", mcp.ServeHTTP(*mcpRemote))
 	}

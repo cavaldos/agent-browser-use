@@ -49,6 +49,7 @@ type BrowserOptions struct {
 	Profile       string // Chrome user data dir (cookies, logins…)
 	ChromePath    string // empty = auto-detect
 	Engine        Engine // resolved from -engine / -chrome
+	Proxy         string // local SOCKS5 switch the browser connects through (empty = direct)
 	Audio         bool
 	MaxTabs       int
 	DownloadDir   string // where Chrome saves downloads (also readable by browser_file_upload)
@@ -281,6 +282,16 @@ func chromeFlags(opt BrowserOptions) []chromedp.ExecAllocatorOption {
 	)
 	if !opt.Engine.Shell { // chrome-headless-shell is always headless and has no "new" mode
 		opts = append(opts, chromedp.Flag("headless", "new"))
+	}
+	if opt.Proxy != "" {
+		// Only this browser goes through the proxy; the rest of the machine is untouched.
+		// socks5:// also sends DNS lookups through the proxy. WebRTC could otherwise
+		// reveal the real IP over UDP, so it is limited to proxied traffic.
+		opts = append(opts,
+			chromedp.ProxyServer(opt.Proxy),
+			chromedp.Flag("force-webrtc-ip-handling-policy", "disable_non_proxied_udp"),
+			chromedp.Flag("webrtc-ip-handling-policy", "disable_non_proxied_udp"),
+		)
 	}
 	if opt.Engine.Path != "" {
 		opts = append(opts, chromedp.ExecPath(opt.Engine.Path))

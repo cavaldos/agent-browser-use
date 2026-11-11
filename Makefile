@@ -17,7 +17,7 @@ ifeq (run,$(firstword $(MAKECMDGOALS)))
   endif
 endif
 
-.PHONY: run build install test-release release docker docker-build docker-run docker-stop docker-logs clean
+.PHONY: run build install test-release release docker docker-build docker-run docker-warp docker-stop docker-logs clean
 
 run:          ## Run from source
 	./scripts/run.sh $(RUN_FLAGS) $(ARGS) $(RUN_ARGS)
@@ -45,8 +45,11 @@ docker-build:
 docker-run:
 	./scripts/docker-run.sh $(ARGS)
 
+docker-warp:  ## Run in Docker with the browser behind Cloudflare WARP (own IP, host untouched)
+	./scripts/docker-warp.sh $(ARGS)
+
 docker-stop:
-	-@docker rm -f $(NAME) >/dev/null 2>&1
+	-@docker rm -f $(NAME) $(NAME)-warp >/dev/null 2>&1
 
 docker-logs:
 	docker logs -f $(NAME)

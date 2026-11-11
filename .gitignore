@@ -14,3 +14,4 @@ dist/
 .pi/
 # runtime log
 agent-browser-use.log
+warp.json

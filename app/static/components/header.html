@@ -13,6 +13,15 @@
           <span class="txt">Connecting…</span>
         </div>
 
+        <!-- Browser IP: always shows the agent browser's public IP; the switch sends it through the proxy (WARP) -->
+        <div id="ipChip" class="flex h-8 items-center gap-2 rounded-full pl-2.5 pr-1.5 text-xs text-zinc-400 ring-1 ring-inset ring-white/[.06]" title="Public IP of the agent browser">
+          <i data-icon="globe" class="h-3.5 w-3.5"></i>
+          <span id="ipText" class="tabular-nums">IP…</span>
+          <button id="ipSwitch" role="switch" aria-checked="false" class="relative h-5 w-9 rounded-full bg-zinc-700 transition" title="Route the agent browser through WARP" hidden>
+            <span class="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform" id="ipKnob"></span>
+          </button>
+        </div>
+
         <!-- Public link: switch the tunnel on/off, copy the link -->
         <div class="relative">
           <button id="tunnelBtn" class="flex h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-zinc-400 ring-1 ring-inset ring-white/[.06] transition hover:bg-white/[.06]" title="Share on a public link">

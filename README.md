@@ -60,6 +60,8 @@ https://github.com/user-attachments/assets/19edb4dd-3e3f-45e3-8809-b27a6c31be58
 Keep the server running while you use your agents. Other commands: `make build` (builds `bin/agent-browser-use`),
 `make docker-logs`, `make docker-stop`. Options: `PORT=8080`, `HOST=0.0.0.0`, `ARGS="-agent-speed 1"`.
 
+**Own IP via Cloudflare WARP (browser only):** the globe chip in the header always shows the agent browser's public IP; its switch sends the browser through Cloudflare WARP. WARP runs inside the app (userspace WireGuard, no network interface, no route changes), so your computer keeps its own IP. The first time you switch it on, the app signs up a free WARP account and keeps it in `warp.json` next to the profile folder (private key, don't share it). To use your own SOCKS5 proxy instead, pass `-proxy socks5://host:port` (or `AGENT_BROWSER_USE_PROXY`); `make docker-warp` does that with a WARP container. DNS and WebRTC also go through the tunnel, so the real IP does not leak.
+
 ## Install
 
 macOS / Linux (Windows: run it inside WSL)

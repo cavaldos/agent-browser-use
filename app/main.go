@@ -754,6 +754,7 @@ func main() {
 	registerFlowAPI(mux, h, mcp)
 	registerTunnelAPI(mux, tm)
 	registerProxyAPI(mux, px)
+	registerKeepAliveAPI(mux, &KeepAlive{b: h.browser})
 	if !*noMCP {
 		mux.HandleFunc("/mcp", mcp.ServeHTTP(*mcpRemote))
 	}

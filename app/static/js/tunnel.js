@@ -10,7 +10,9 @@ function renderTunnel() {
   $("#tunnelKnob").style.transform = s.on || s.busy ? "translateX(16px)" : "";
   $("#tunnelOn").hidden = !s.on;
   $("#tunnelLabel").textContent = s.busy ? "Connecting…" : s.on ? "Public" : "Share";
-  $("#tunnelBtn").classList.toggle("text-emerald-400", !!s.on);
+  $("#tunIco").classList.toggle("text-sky-400", !!s.on);
+  $("#tunIco").classList.toggle("text-zinc-600", !s.on);
+  $("#tunIco").title = "Public link: " + (s.on ? "on" : "off");
   $("#tunnelHint").textContent = s.busy ? "Opening the tunnel, a few seconds…"
     : s.error ? "Failed: " + s.error
     : s.on ? "Anyone with this link can open the room." + (s.generated ? " Password is required." : "")

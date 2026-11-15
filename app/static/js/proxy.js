@@ -7,6 +7,7 @@ function renderProxy() {
   const s = proxyState;
   const sw = $("#ipSwitch");
   sw.hidden = !s.configured;
+  $("#ipChip").hidden = !s.configured;
   sw.setAttribute("aria-checked", String(!!s.on));
   sw.style.background = s.on ? "#10b981" : "";
   sw.disabled = !s.canToggle;
@@ -14,10 +15,9 @@ function renderProxy() {
   const via = !s.configured ? "" : s.on ? (s.warp === "on" || s.warp === "plus" ? " · WARP" : " · proxy") : " · direct";
   $("#ipText").textContent = s.checking ? (s.on ? "Connecting WARP…" : "IP…")
     : s.error ? "IP unavailable" : (s.ip || "IP…") + (s.loc ? " " + s.loc : "") + via;
-  $("#ipChip").classList.toggle("text-emerald-400", !!s.on && !s.error);
   if (s.warpError && s.warpError !== shownWarpError) toast("WARP: " + s.warpError, "error");
   shownWarpError = s.warpError || "";
-  $("#ipChip").title = s.warpError ? "WARP could not start: " + s.warpError
+  $("#ipText").title = s.warpError ? "WARP could not start: " + s.warpError
     : s.error ? "Could not read the IP: " + s.error
     : !s.configured ? "Public IP of the agent browser (this machine's own). Start with -proxy to get a switch."
     : s.on ? "Agent browser goes out through WARP — this machine's own IP is unchanged" : "Agent browser uses this machine's own IP. Switch on for a WARP IP";

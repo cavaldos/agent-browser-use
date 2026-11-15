@@ -24,3 +24,4 @@
 #themeBtn .i-sun { display: none; }
 :root[data-theme="light"] #themeBtn .i-sun { display: block; }
 :root[data-theme="light"] #themeBtn .i-moon { display: none; }
+@media (max-width: 1280px) { .hud-jp { display: none; } }

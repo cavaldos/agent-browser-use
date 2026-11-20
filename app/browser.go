@@ -853,6 +853,21 @@ func (b *Browser) viewSize() View {
 	return b.view
 }
 
+// screen is the configured screen size together with the device emulation in force,
+// which together decide the real viewport a capture or a frame must cover.
+func (b *Browser) screen() (View, Emulation) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.view, b.emu
+}
+
+// screenEmu is the device emulation in force, on its own.
+func (b *Browser) screenEmu() Emulation {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.emu
+}
+
 // Close shuts Chrome down, so no process is left behind when we exit.
 func (b *Browser) Close() {
 	b.mu.Lock()
@@ -1058,13 +1073,20 @@ func (b *Browser) activate(t *Tab) {
 
 func (b *Browser) startScreencast(t *Tab, v View) {
 	q := int64(v.Quality)
+	// Allow full device-pixel frames so text stays sharp. The factor has to be the
+	// one Chrome actually renders at: asking for more than that made Chrome compose
+	// an oversized surface and hand back a tiled 2x2 frame instead of the viewport.
+	scale := 1.0
+	if m := metrics(v, b.screenEmu()); m.DeviceScaleFactor > 1 {
+		scale = m.DeviceScaleFactor
+	}
+	maxW, maxH := int64(float64(v.Width)*scale), int64(float64(v.Height)*scale)
 	// Chrome refuses while a page is between two documents, so retry briefly.
 	for try := 0; try < 10; try++ {
 		ctx, cancel := context.WithTimeout(t.ctx, 5*time.Second)
 		_, err := chromedp.Call(ctx, page.StartScreencast, page.StartScreencastParams{
 			Format: page.StartScreencastFormatJpeg, Quality: &q,
-			// Allow full device-pixel frames (pages render at up to 3x), so text stays sharp.
-			MaxWidth: int64(v.Width) * 3, MaxHeight: int64(v.Height) * 3, EveryNthFrame: 1,
+			MaxWidth: maxW, MaxHeight: maxH, EveryNthFrame: 1,
 		})
 		cancel()
 		if err == nil || t.ctx.Err() != nil || strings.Contains(err.Error(), "already active") {
@@ -1085,7 +1107,22 @@ func (b *Browser) startScreencast(t *Tab, v View) {
 			return
 		}
 		ctx, cancel := cmdCtx(t.ctx)
-		shot, err := chromedp.Call(ctx, page.CaptureScreenshot, page.CaptureScreenshotParams{Format: page.CaptureScreenshotFormatJpeg, Quality: &q})
+		// Same clip as a normal capture: without it Chrome may hand back a frame
+		// composed from an oversized surface, i.e. the viewport tiled at quarter size.
+		m := metrics(v, b.screenEmu())
+		var shotClip *page.Viewport
+		if m.Width > 0 && m.Height > 0 {
+			fs := m.DeviceScaleFactor
+			if fs <= 0 {
+				fs = 1
+			}
+			shotClip = &page.Viewport{X: 0, Y: 0, Width: float64(m.Width), Height: float64(m.Height), Scale: fs}
+		}
+		noBeyond, fromView := false, false
+		shot, err := chromedp.Call(ctx, page.CaptureScreenshot, page.CaptureScreenshotParams{
+			Format: page.CaptureScreenshotFormatJpeg, Quality: &q,
+			Clip: shotClip, FromSurface: &fromView, CaptureBeyondViewport: &noBeyond,
+		})
 		cancel()
 		if err != nil {
 			return

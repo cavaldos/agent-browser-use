@@ -610,7 +610,8 @@ func main() {
 	fl.IntVar(&bo.Quality, "quality", 92, "image quality 10-100 (lower = less bandwidth)")
 	fl.IntVar(&bo.MaxTabs, "max-tabs", 12, "maximum number of open tabs")
 	fl.StringVar(&bo.StartURL, "start", "https://www.google.com", "page for new tabs")
-	fl.StringVar(&bo.Profile, "profile", "chrome-profile", "folder for the shared browser's cookies/logins")
+	fl.StringVar(&homeFlag, "home", "", "one folder for everything the app stores: browser profile, downloads, uploads, states, flows, warp.json, log (empty = \"log\" in the current folder; ~/.agent-browser-use for the mcp command)")
+	fl.StringVar(&bo.Profile, "profile", "", "folder for the shared browser's cookies/logins (empty = \"chrome-profile\" inside the home folder)")
 	fl.StringVar(&bo.ChromePath, "chrome", "", "path to the browser executable (empty = auto-detect)")
 	proxyUp := fl.String("proxy", os.Getenv("AGENT_BROWSER_USE_PROXY"), "upstream SOCKS5 proxy for the shared browser only, e.g. socks5://127.0.0.1:40000 (empty = built-in Cloudflare WARP); the header switch turns it on/off")
 	engine := fl.String("engine", "auto", "browser to run: chromium, chrome, edge, brave, vivaldi, headless-shell (lightest); auto = Chromium, else the first one installed")
@@ -657,17 +658,10 @@ func main() {
 	bo.Audio = !*noAudio
 	log.SetOutput(os.Stderr)
 
-	// An MCP client starts us from any folder, so keep our files in one place there.
-	if stdio {
-		set := map[string]bool{}
-		fl.Visit(func(f *flag.Flag) { set[f.Name] = true })
-		if home, err := os.UserHomeDir(); err == nil {
-			dir := filepath.Join(home, "."+appName)
-			os.MkdirAll(dir, 0755)
-			if !set["profile"] {
-				bo.Profile = filepath.Join(dir, "chrome-profile")
-			}
-		}
+	// Everything lives in one home folder, whatever folder we were started from.
+	home := stateDir()
+	if bo.Profile == "" {
+		bo.Profile = filepath.Join(home, "chrome-profile")
 	}
 
 	local := fmt.Sprintf("http://localhost:%d", *port)

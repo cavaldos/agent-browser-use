@@ -3,6 +3,8 @@
 # Extra flags are passed through, e.g. scripts/run.sh -port 8080
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+DATA_HOME="${AGENT_BROWSER_USE_HOME:-$ROOT/log}"
+mkdir -p "$DATA_HOME"
 
 # Colors only on a terminal (and not when NO_COLOR is set).
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -101,7 +103,7 @@ pids_on_port() {
 # PIDs of any instance of this app (any port) that uses this project's Chrome profile.
 pids_of_instances() {
     ps -axo pid=,command= 2>/dev/null |
-        grep -F -- "-profile $ROOT/chrome-profile" |
+        grep -F -- "-home $DATA_HOME" |
         grep -v grep |
         awk '{print $1}' |
         grep -vx "$$" || true
@@ -232,7 +234,7 @@ draw_menu() {
     printf '\033[2K%s  ↑↓ move · Enter select · Ctrl+C terminate%s' "$C_DIM" "$C_RST"
 }
 
-log="$ROOT/agent-browser-use.log"
+log="$DATA_HOME/agent-browser-use.log"
 app_pid=""
 
 want_tunnel=0
@@ -245,7 +247,7 @@ done
 # Start the app detached from the terminal; output goes to the log.
 start_app() {
     : >"$log"
-    AGENT_BROWSER_USE_NO_MENU=1 nohup go run . -profile "$ROOT/chrome-profile" "$@" >"$log" 2>&1 </dev/null &
+    AGENT_BROWSER_USE_NO_MENU=1 nohup go run . -home "$DATA_HOME" "$@" >"$log" 2>&1 </dev/null &
     app_pid=$!
 }
 
@@ -339,5 +341,5 @@ if interactive; then
     wait_ready || exit 1
     choose_with_arrows "$@"
 else
-    exec go run . -profile "$ROOT/chrome-profile" "$@"
+    exec go run . -home "$DATA_HOME" "$@"
 fi

@@ -29,12 +29,27 @@ func menuWanted() bool {
 		isTTY(os.Stdin) && isTTY(os.Stdout)
 }
 
+// homeFlag is the -home flag: the one folder for everything the app stores.
+var homeFlag string
+
 func stateDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = os.TempDir()
+	dir := homeFlag
+	if dir == "" {
+		dir = os.Getenv("AGENT_BROWSER_USE_HOME")
 	}
-	dir := filepath.Join(home, "."+appName)
+	if dir == "" && !(len(os.Args) > 1 && os.Args[1] == "mcp") {
+		dir = "log" // next to where the app is started
+	}
+	if dir == "" { // stdio mode: an MCP client starts us from any folder
+		home, err := os.UserHomeDir()
+		if err != nil {
+			home = os.TempDir()
+		}
+		dir = filepath.Join(home, "."+appName)
+	}
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
 	os.MkdirAll(dir, 0755)
 	return dir
 }

@@ -51,16 +51,81 @@ https://github.com/user-attachments/assets/19edb4dd-3e3f-45e3-8809-b27a6c31be58
    make run            # starts the server on port 3000
    ```
 
-   Or run it with Docker: `make docker`.
+   Or run it with Docker: `make docker`. If you installed the binary (see [Install](#install)), just run `agent-browser-use`.
 
 2. The server listens on **port 3000**:
    - Viewer (watch the agent): **http://localhost:3000**
    - MCP endpoint (connect agents): **http://localhost:3000/mcp**
 
-Keep the server running while you use your agents. Other commands: `make build` (builds `bin/agent-browser-use`),
-`make docker-logs`, `make docker-stop`. Options: `PORT=8080`, `HOST=0.0.0.0`, `ARGS="-agent-speed 1"`.
+Keep the server running while you use your agents.
 
-**Own IP via Cloudflare WARP (browser only):** the globe chip in the header always shows the agent browser's public IP; its switch sends the browser through Cloudflare WARP. WARP runs inside the app (userspace WireGuard, no network interface, no route changes), so your computer keeps its own IP. The first time you switch it on, the app signs up a free WARP account and keeps it in `warp.json` next to the profile folder (private key, don't share it). To use your own SOCKS5 proxy instead, pass `-proxy socks5://host:port` (or `AGENT_BROWSER_USE_PROXY`); `make docker-warp` does that with a WARP container. DNS and WebRTC also go through the tunnel, so the real IP does not leak.
+### Run commands
+
+```sh
+agent-browser-use                       # web UI + MCP over HTTP (port 3000)
+agent-browser-use -p 8080 -pw secret    # other port, with a password
+agent-browser-use mcp                   # MCP over stdio (an agent starts it for you); also serves the web UI
+agent-browser-use -version              # print the version
+agent-browser-use -update               # update to the latest release
+```
+
+From source, use `make`:
+
+| Command | What it does |
+|---|---|
+| `make run` | Run from source. Short options: `make run p=8080 pw=secret engine=brave` |
+| `make run -- -p 8080 -pw secret` | Pass any flag straight to the app |
+| `make build` | Build `bin/agent-browser-use` |
+| `make install` | Build and install to `~/.local/bin` (`BINDIR=...` to change) |
+| `make docker` / `make docker-logs` / `make docker-stop` | Run in Docker, show its logs, stop it |
+| `make docker-warp` | Docker with a Cloudflare WARP container as the browser's proxy |
+
+`PORT=8080`, `HOST=0.0.0.0` and `ARGS="-agent-speed 1"` also work with `make`.
+
+### Flags
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-port`, `-p` | `3000` | HTTP port |
+| `-pw` | none | Password for the web UI and `/mcp` (or env `AGENT_BROWSER_USE_PASSWORD`) |
+| `-home` | `log` (current folder) | The one folder where everything is stored (see below; or env `AGENT_BROWSER_USE_HOME`) |
+| `-engine` | `auto` | `chromium`, `chrome`, `edge`, `brave`, `vivaldi`, `headless-shell` (lightest) |
+| `-chrome` | auto-detect | Path to the browser executable |
+| `-width`, `-height` | `1280`, `720` | Shared screen size |
+| `-quality` | `92` | Image quality 10-100 (lower = less bandwidth) |
+| `-max-tabs` | `12` | Maximum open tabs |
+| `-start` | `https://www.google.com` | Page for new tabs |
+| `-agent-speed` | `0` | Agent cursor/typing pace: `0` instant, `1` normal, `2` slower |
+| `-agent-idle` | `15s` | Give control back after the agent is idle this long (`0` = never) |
+| `-open` | `true` | Open the viewer when the agent starts and nobody is watching |
+| `-proxy` | none | Upstream SOCKS5 proxy for the browser only (or env `AGENT_BROWSER_USE_PROXY`) |
+| `-tunnel` | off | Public https link through a built-in Cloudflare tunnel (sets a password if none) |
+| `-subdomain` | random | With `-tunnel`: name for the public URL |
+| `-mcp-remote` | off | Allow `/mcp` from other machines (default: this machine only) |
+| `-no-mcp` | off | Disable the `/mcp` endpoint |
+| `-no-browser` | off | Disable the shared browser |
+| `-no-audio` | off | Disable browser audio |
+| `-data` | none | File to keep chat history across restarts (default: memory only) |
+| `-profile`, `-downloads`, `-uploads`, `-states`, `-flows` | inside `-home` | Override where one specific part is stored |
+
+Run `agent-browser-use -h` for the full list. Set `AGENT_BROWSER_USE_NO_MENU=1` to run in the foreground instead of the terminal menu.
+
+### Where your data goes
+
+Everything the app creates lives in **one folder** named `log/`, created in the folder you start the app from (`make run`: the project root). Change it with `-home <folder>`. With `agent-browser-use mcp` (started by an agent from any folder) it is `~/.agent-browser-use/` instead.
+
+```
+log/
+  chrome-profile/        browser cookies and logins (delete it to log out of everything)
+  downloads/             files the browser downloaded
+  uploads/               files the agent may upload from
+  states/                saved login sessions (contain cookies: treat like passwords)
+  flows/                 recorded flows
+  warp.json              built-in WARP account (private key, don't share)
+  agent-browser-use.log  server log
+```
+
+**Own IP via Cloudflare WARP (browser only):** the globe chip in the header always shows the agent browser's public IP; its switch sends the browser through Cloudflare WARP. WARP runs inside the app (userspace WireGuard, no network interface, no route changes), so your computer keeps its own IP. The first time you switch it on, the app signs up a free WARP account and keeps it in `warp.json` in the home folder (private key, don't share it). To use your own SOCKS5 proxy instead, pass `-proxy socks5://host:port` (or `AGENT_BROWSER_USE_PROXY`); `make docker-warp` does that with a WARP container. DNS and WebRTC also go through the tunnel, so the real IP does not leak.
 
 ## Install
 
@@ -219,7 +284,7 @@ The agent finds the flow with `browser_get_flow`, then replays it with `browser_
 
 - **Passwords are never stored.** A password step needs its value passed in `inputs` at replay time, or a saved login (`browser_state`).
 - **Flows tab** (sidebar): list, search, rename, view and edit steps, remove steps, replay from the viewer, export and import as `.json`, delete.
-- Flows are saved in the `flows/` folder next to the browser profile (change it with `-flows <folder>`).
+- Flows are saved in the `flows/` folder inside the home folder (change it with `-flows <folder>`).
 - Not recorded: hover-only menus, scrolling, and anything inside an iframe.
 
 See [docs/GUIDE.md](docs/GUIDE.md) for the full tool reference, options, the shared browser room, security and limitations.

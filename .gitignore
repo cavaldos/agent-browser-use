@@ -12,6 +12,7 @@ app/cloudflared/*
 !app/cloudflared/.gitkeep
 dist/
 .pi/
-# runtime log
-agent-browser-use.log
+
+# runtime data (profile, downloads, states, flows, logs)
+log/
 warp.json

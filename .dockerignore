@@ -5,3 +5,4 @@ scripts/
 data.json
 chrome-profile/
 Makefile
+log/

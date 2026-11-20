@@ -143,7 +143,7 @@ Every action that returns a page snapshot (click, type, navigate…) also lists 
 | `browser_downloads` | `list` downloaded files (with their path on the server), `wait` until a download finishes, `read` a text file |
 | `browser_file_upload` | Fill a file input (give `ref` of the input, or of its button/label). `paths` are names of files in the upload folder, or `files` (`name` + base64 `data`) are written there first |
 
-Downloads go to `downloads/` and uploads are read from `uploads/` (both next to the profile folder; change with `-downloads` and `-uploads`). Uploading refuses any file outside those two folders.
+Downloads go to `downloads/` and uploads are read from `uploads/` (both inside the home folder; change with `-downloads` and `-uploads`). Uploading refuses any file outside those two folders.
 
 ### Cookies, storage and sessions
 
@@ -217,10 +217,9 @@ printed at startup). They hear the page's audio, chat, send emoji reactions, and
 
 ## Data
 
-- `./agent-browser-use` keeps `chrome-profile/` (cookies/logins) in the current folder; `agent-browser-use mcp` keeps it in `~/.agent-browser-use/`.
+- Everything lives in one home folder, `log/` in the folder you start the app from (`~/.agent-browser-use/` for `agent-browser-use mcp`; change it with `-home` or `AGENT_BROWSER_USE_HOME`): `chrome-profile/` (cookies/logins), `downloads/`, `uploads/`, `states/`, `flows/`, `warp.json` and `agent-browser-use.log`.
 - Chat history is kept in memory only and is gone after a restart. Pass `-data chat.json` to keep it in a file.
-- Downloads, uploads and saved sessions live in `downloads/`, `uploads/` and `states/` next to the profile folder (`-downloads`, `-uploads`, `-states` to change).
-- Change the profile folder with `-profile`. Delete `chrome-profile/` to log out of everything.
+- `-profile`, `-downloads`, `-uploads`, `-states` and `-flows` override one part. Delete `chrome-profile/` to log out of everything.
 
 ## Security
 

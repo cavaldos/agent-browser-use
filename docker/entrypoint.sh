@@ -8,7 +8,7 @@ rm -f /data/chrome-profile/SingletonLock /data/chrome-profile/SingletonSocket /d
 # The Makefile publishes the port on 127.0.0.1 only, so the MCP endpoint stays local to this machine.
 exec agent-browser-use \
   -chrome /usr/local/bin/chromium-docker \
-  -profile /data/chrome-profile \
+  -home /data \
   -open=false \
   -mcp-remote \
   "$@"

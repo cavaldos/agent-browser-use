@@ -357,6 +357,49 @@
     return picked;
   }
 
+  // A native <select> opens its list as a browser popup, which headless Chrome
+  // never paints: the click lands, the value can change, but no list appears in
+  // the stream or in a screenshot. Showing the options inline (size > 1) puts
+  // them back in the render tree, so people watching actually see the list.
+  // openPicker remembers what it changed, so closePicker can put it back.
+  const pickerSaved = new WeakMap();
+  function openPicker(r, max = 12) {
+    const el = get(r);
+    if (el.tagName !== "SELECT") throw new Error(`Element ${r} is not a <select>.`);
+    if (!pickerSaved.has(el)) {
+      pickerSaved.set(el, { size: el.getAttribute("size"), style: el.getAttribute("style") });
+    }
+    const box = el.getBoundingClientRect();
+    const count = Math.max(2, Math.min(el.options.length, max));
+    el.size = count;
+    const rowH = box.height / Math.max(1, el.size === 0 ? 1 : el.size);
+    // Tall enough for the options, keeping the field width and the page layout.
+    el.style.height = Math.max(160, Math.round(count * (rowH * 0.6 || 22))) + "px";
+    el.style.position = "relative";
+    el.style.zIndex = "2147483000";
+    el.style.background = getComputedStyle(el).background;
+    el.scrollIntoView({ block: "center" });
+    const opts = [...el.options];
+    const sel = el.selectedIndex;
+    // Scroll the chosen option into view inside the list box.
+    if (el.size && opts[sel]) {
+      const idx = el.size;
+      if (sel >= idx) el.scrollTop = (sel - idx + 1) * (el.scrollHeight / opts.length);
+    }
+    return { shown: count, total: opts.length, selected: opts[sel] ? clean(opts[sel].text) : "" };
+  }
+  function closePicker(r) {
+    const el = get(r);
+    const saved = pickerSaved.get(el);
+    if (!saved) return false;
+    if (saved.size === null) el.removeAttribute("size");
+    else el.setAttribute("size", saved.size);
+    if (saved.style === null) el.removeAttribute("style");
+    else el.setAttribute("style", saved.style);
+    pickerSaved.delete(el);
+    return true;
+  }
+
   const hasText = (s) => (document.body?.innerText || "").includes(s);
 
   // ---- Picking an element (viewer "Pick" tool) ----
@@ -647,7 +690,7 @@
   observer.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
 
   Object.defineProperty(window, "__abu", {
-    value: { v: V, refs, ids, get n() { return n; }, get, snapshot, pick, resolve, locate, prepareInput, selectOption, hasText,
+    value: { v: V, refs, ids, get n() { return n; }, get, snapshot, pick, resolve, locate, prepareInput, selectOption, openPicker, closePicker, hasText,
       idleFor, watchStart, watchState, watchStop, observer, fileInput, recStart, recStop, find },
     configurable: true, enumerable: false, writable: true,
   });

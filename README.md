@@ -7,6 +7,15 @@ Agent Browser Use is a single Go binary that runs one headless Chrome on your ma
 (Claude Code, Codex, OpenCode, Pi, Cursor, VS Code…) can navigate, read the page, click, type and log in for you, while
 a web viewer shows the agent's cursor, the element it is acting on, and a log of every step.
 
+<p align="center">
+  <a href="https://github.com/cavaldos/agent-browser-use/releases/latest"><img src="https://img.shields.io/badge/download-latest-4c1" alt="Download latest"></a>
+  <a href="https://github.com/cavaldos/agent-browser-use/releases"><img src="https://img.shields.io/github/downloads/cavaldos/agent-browser-use/total?label=downloads&color=4c1" alt="Downloads"></a>
+  <a href="https://github.com/cavaldos/agent-browser-use/stargazers"><img src="https://img.shields.io/github/stars/cavaldos/agent-browser-use?label=stars&color=007ec6" alt="Stars"></a>
+  <a href="https://github.com/cavaldos/agent-browser-use/network/members"><img src="https://img.shields.io/github/forks/cavaldos/agent-browser-use?label=forks&color=007ec6" alt="Forks"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/cavaldos/agent-browser-use?label=license&color=4c1" alt="License: MIT"></a>
+  <a href="https://github.com/sponsors/cavaldos"><img src="https://img.shields.io/badge/Sponsor-%E2%9D%A4%EF%B8%8F-c224f6" alt="Sponsor"></a>
+</p>
+
 ## Demo
 
 https://github.com/user-attachments/assets/19edb4dd-3e3f-45e3-8809-b27a6c31be58

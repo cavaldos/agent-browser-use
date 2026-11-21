@@ -956,6 +956,71 @@ func (a *Agent) SelectOption(ref, element string, values []string) ([]string, er
 	return picked, nil
 }
 
+// OpenPicker shows a <select>'s options inline, so the list is visible in the
+// stream and in screenshots. A native dropdown is a browser popup, which headless
+// Chrome never paints: without this, clicking one looks like nothing happened.
+func (a *Agent) OpenPicker(ref, element string) (string, error) {
+	if ref == "" {
+		return "", errors.New("ref is required: take a snapshot (browser_snapshot) and pass the ref of the <select>")
+	}
+	a.announce("📋", "Show the options of "+targetName(element, box{}), nil)
+	fr := parseFrameRef(ref)
+	var out struct {
+		Shown    int    `json:"shown"`
+		Total    int    `json:"total"`
+		Selected string `json:"selected"`
+	}
+	err := a.act(func(t *Tab) error {
+		if fr.Frame == 0 {
+			v, err := evalJS[struct {
+				Shown    int    `json:"shown"`
+				Total    int    `json:"total"`
+				Selected string `json:"selected"`
+			}](t, "__abu.openPicker("+jsq(fr.Rest)+")")
+			out = v
+			return err
+		}
+		v, err := evalInFrameAs[struct {
+			Shown    int    `json:"shown"`
+			Total    int    `json:"total"`
+			Selected string `json:"selected"`
+		}](t.ctx, fr.Frame, "__abu.openPicker("+jsq(fr.Rest)+")")
+		out = v
+		return err
+	})
+	if err != nil {
+		return "", err
+	}
+	a.settle(time.Second)
+	return fmt.Sprintf("Showing %d of %d options inline (selected: %q). Use browser_select_option, or click an option, then browser_close_picker.", out.Shown, out.Total, out.Selected), nil
+}
+
+// ClosePicker puts a <select> back the way it was before OpenPicker.
+func (a *Agent) ClosePicker(ref, element string) (string, error) {
+	if ref == "" {
+		return "", errors.New("ref is required")
+	}
+	fr := parseFrameRef(ref)
+	var closed bool
+	err := a.act(func(t *Tab) error {
+		if fr.Frame == 0 {
+			v, err := evalJS[bool](t, "__abu.closePicker("+jsq(fr.Rest)+")")
+			closed = v
+			return err
+		}
+		v, err := evalInFrameAs[bool](t.ctx, fr.Frame, "__abu.closePicker("+jsq(fr.Rest)+")")
+		closed = v
+		return err
+	})
+	if err != nil {
+		return "", err
+	}
+	if !closed {
+		return "Nothing to close: this dropdown was not opened with browser_open_picker.", nil
+	}
+	return "Closed the dropdown.", nil
+}
+
 func (a *Agent) Scroll(direction string, amount float64, ref, element string) error {
 	v := a.b.viewSize()
 	x, y := 0.5, 0.5

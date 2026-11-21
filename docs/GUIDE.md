@@ -112,6 +112,7 @@ on has a `ref` (for example `e12`). Pass that `ref` to the action tools. Every a
 | `browser_type` | Click a text field and type. `clear` (default true) replaces the old content; `submit` presses Enter |
 | `browser_press_key` | Press a key or shortcut: `Enter`, `Escape`, `ArrowDown`, `Tab`, `Control+A`, `Shift+Tab`… |
 | `browser_select_option` | Pick options in a `<select>` by value or label |
+| `browser_open_picker` / `browser_close_picker` | Show a `<select>`'s options inline, so the list is visible |
 | `browser_scroll` | Scroll the page (or inside an element) with the mouse wheel |
 | `browser_drag` | Drag one element onto another |
 | `browser_wait_for` | Wait for text to appear or disappear, or for a number of seconds |
@@ -271,7 +272,9 @@ server logs a one-time warning if it sees that combination.
 ## Limitations
 
 - No file upload/download, no browser extensions.
-- Native `<select>` popups don't show in the stream. The agent picks options with `browser_select_option`.
+- Native `<select>` popups are drawn by the browser, so they don't show in the stream or in a
+  screenshot. Set the value with `browser_select_option`, or call `browser_open_picker` to render
+  the options inline (visible), then `browser_close_picker` when done.
 - Iframes are read (see [Cross-origin iframes](#cross-origin-iframes)), but only the first 10
   with content are listed per snapshot, and a frame you could not read is reported instead of
   being silently skipped.

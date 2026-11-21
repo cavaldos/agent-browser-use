@@ -1072,39 +1072,16 @@ func (a *Agent) WaitFor(seconds float64, text, gone string) error {
 }
 
 func (a *Agent) Screenshot() (string, error) {
-	q := int64(80)
-	// Pin the capture to the configured screen. Without a clip, Chrome composes the
-	// shot from whatever surface it last used for the tab, and that surface can be
-	// larger than the view (the page is scrollable, or emulation changed the device
-	// scale factor), which makes the viewport come out tiled 2x2 at quarter size.
-	v, emu := a.b.screen()
-	m := metrics(v, emu)
-	// A browser that was never sized (tests) has no view: leave the clip off then,
-	// so the capture keeps Chrome's own default instead of an empty region.
-	var clip *page.Viewport
-	if m.Width > 0 && m.Height > 0 {
-		scale := m.DeviceScaleFactor
-		if scale <= 0 {
-			scale = 1
-		}
-		// Clip is in CSS pixels; Scale keeps the device-pixel resolution the shots had before.
-		clip = &page.Viewport{X: 0, Y: 0, Width: float64(m.Width), Height: float64(m.Height), Scale: scale}
-	}
-	no, fromView := false, false
 	var data []byte
 	err := a.look(func(t *Tab) error {
-		shot, err := chromedp.Call(t.ctx, page.CaptureScreenshot, page.CaptureScreenshotParams{
-			Format:                page.CaptureScreenshotFormatJpeg,
-			Quality:               &q,
-			Clip:                  clip,
-			FromSurface:           &fromView,
-			CaptureBeyondViewport: &no,
-		})
-		if err == nil {
-			data = shot.Data
-		}
+		var err error
+		data, err = a.b.shot(t)
 		return err
 	})
+	if err == nil && a.hub.assets != nil {
+		u, title := a.b.pageOf()
+		a.hub.assets.add(Asset{Kind: "screenshot", Name: shotName(), Mime: "image/jpeg", URL: u, Title: title, By: "agent"}, data)
+	}
 	return base64.StdEncoding.EncodeToString(data), err
 }
 

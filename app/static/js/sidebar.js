@@ -22,8 +22,10 @@ function showPane(p) {
   $("#chatPane").hidden = p !== "chat";
   $("#settingsPane").hidden = p !== "settings";
   $("#flowsPane").hidden = p !== "flows";
+  $("#assetsPane").hidden = p !== "assets";
   if (p === "settings") renderStates();
   if (p === "flows") renderFlows();
+  if (p === "assets") renderAssets();
   if (p === "chat") { setUnread(0); scrollChat(true); }
 }
 const chatVisible = () => sidebarOpen() && pane === "chat";

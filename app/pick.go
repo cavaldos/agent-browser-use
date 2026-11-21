@@ -60,6 +60,7 @@ func (h *Hub) pick(c *Client, m Msg) {
 			}
 		}
 		p.Code = h.savePick(p)
+		h.assets.add(Asset{Kind: "element", Name: p.Code, Mime: "text/html", Text: pickText(p), URL: p.URL, Title: p.Title, By: c.user.Name}, nil)
 	} else {
 		p = &Pick{Rect: p.Rect, View: &v, Tag: p.Tag, Role: p.Role, Name: p.Name}
 	}
@@ -123,4 +124,15 @@ func (a *Agent) GetPicked(code string) (string, error) {
 	}
 	fmt.Fprintf(&s, "\n```html\n%s\n```\n", p.HTML)
 	return s.String(), nil
+}
+
+// pickText is what the Assets tab keeps of a picked element: where it is and its markup.
+func pickText(p *Pick) string {
+	var s strings.Builder
+	fmt.Fprintf(&s, "<%s>", p.Tag)
+	if p.Name != "" {
+		fmt.Fprintf(&s, " %s", quote(p.Name))
+	}
+	fmt.Fprintf(&s, "\nselector: %s\n\n%s", p.Selector, p.HTML)
+	return s.String()
 }

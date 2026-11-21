@@ -133,6 +133,7 @@ type Hub struct {
 	seats       map[string]*Seat // connected coding agents, by @handle
 	seatsSent   []string         // the agent list everyone has
 	chatWake    chan struct{}    // closed when a message for the agent arrives
+	assets      *Assets          // the Assets tab (screenshots, copied text, picked elements, downloads)
 	picks       map[string]*Pick // elements people picked in the viewer, by code
 	pickOrder   []string
 	rec         *recording // the flow being recorded, if any
@@ -408,7 +409,11 @@ func (h *Hub) handle(c *Client, m Msg) {
 		case "mouse":
 			b.Mouse(m)
 		case "key":
-			b.Key(m, func(s string) { h.sendTo(c, Msg{Type: "clipboard", Text: s}) })
+			b.Key(m, func(s string) {
+				h.sendTo(c, Msg{Type: "clipboard", Text: s})
+				u, title := b.pageOf()
+				h.assets.add(Asset{Kind: "copy", Name: "copied-text.txt", Mime: "text/plain", Size: int64(len(s)), Text: s, URL: u, Title: title, By: c.user.Name}, nil)
+			})
 		case "text":
 			b.Text(m.Text)
 		case "tab_new":
@@ -618,6 +623,7 @@ func main() {
 	fl.StringVar(&bo.DownloadDir, "downloads", "", "folder for downloaded files (empty = \"downloads\" next to the profile folder)")
 	fl.StringVar(&bo.UploadDir, "uploads", "", "folder the agent may upload files from (empty = \"uploads\" next to the profile folder)")
 	fl.StringVar(&bo.StateDir, "states", "", "folder for saved logins/sessions (empty = \"states\" next to the profile folder)")
+	fl.BoolVar(&bo.NoDevTools, "no-devtools", false, "do not open Chrome's local debugging port (turns off Inspect in the viewer)")
 	fl.StringVar(&bo.FlowDir, "flows", "", "folder for recorded flows (empty = \"flows\" next to the profile folder)")
 	var ao AgentOptions
 	fl.Float64Var(&ao.Speed, "agent-speed", 0, "pace of the AI agent's cursor and typing, for people who want to follow it: 0 instant, 1 normal, 2 slower")
@@ -698,6 +704,7 @@ func main() {
 
 	h := &Hub{clients: map[*Client]bool{}, chat: []ChatMsg{}, dataFile: *data, agent: &Client{user: agentUser}}
 	h.load()
+	h.assets = newAssets(filepath.Join(filepath.Dir(bo.Profile), "assets"), h)
 
 	mcp := &MCPServer{}
 	warpFile := "" // built-in WARP account, kept next to the browser profile
@@ -746,6 +753,8 @@ func main() {
 	mux.HandleFunc("/ws", h.serveWS)
 	registerStateAPI(mux, mcp)
 	registerFlowAPI(mux, h, mcp)
+	registerAssetAPI(mux, h)
+	registerDevtoolsAPI(mux, h)
 	registerTunnelAPI(mux, tm)
 	registerProxyAPI(mux, px)
 	registerKeepAliveAPI(mux, &KeepAlive{b: h.browser})

@@ -102,6 +102,7 @@ function onMessage(m) {
     case "rec": onRec(m.rec); break;
     case "rec_done": onRecDone(m.rec); break;
     case "flows": renderFlows(); break;
+    case "assets": onAssets(m); break;
     case "flow_run": onFlowRun(m.rec); break;
     case "chat": addChat(m.msg, true); break;
     case "emote": spawnEmote(m.text, m.user); break;

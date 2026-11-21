@@ -5,6 +5,7 @@
       <div class="flex flex-1 rounded-lg bg-white/[.04] p-1 ring-1 ring-inset ring-white/[.06]">
         <button data-pane="chat" class="side-tab active"><i data-icon="chat" class="h-3.5 w-3.5"></i>Chat</button>
         <button data-pane="flows" class="side-tab"><i data-icon="record" class="h-3.5 w-3.5"></i>Flows<span id="flowsTabDot" class="rec-ind" hidden></span></button>
+        <button data-pane="assets" class="side-tab"><i data-icon="layers" class="h-3.5 w-3.5"></i>Assets<span id="assetsBadge" class="grid h-4 min-w-4 place-items-center rounded-full bg-indigo-500 px-1 text-[10px] font-semibold leading-none text-white" hidden></span></button>
         <button data-pane="settings" class="side-tab"><i data-icon="settings" class="h-3.5 w-3.5"></i>Settings</button>
       </div>
       <button id="sidebarClose" class="icon-btn drawer-only h-8 w-8" title="Close"><i data-icon="x" class="h-4 w-4"></i></button>
@@ -40,6 +41,23 @@
         <div id="flowList" class="min-h-0 flex-1 space-y-2 overflow-y-auto p-3"></div>
       </div>
       <div id="flowDetail" class="flex min-h-0 flex-1 flex-col" hidden></div>
+    </div>
+
+    <!-- Assets: what the browser produced while working (screenshots, copied text, picked elements, downloads) -->
+    <div id="assetsPane" class="flex min-h-0 flex-1 flex-col" hidden>
+      <div class="shrink-0 space-y-2 border-b border-white/[.06] p-3">
+        <div class="flex gap-2">
+          <button id="assetCaptureBtn" class="btn-primary h-8 flex-1 text-[12px]" title="Take a screenshot of the shared screen now"><i data-icon="camera" class="h-3.5 w-3.5"></i>Capture screen</button>
+          <button id="assetClearBtn" class="btn-ghost h-8 shrink-0 px-2.5 text-xs" title="Remove every asset from this list"><i data-icon="trash" class="h-3.5 w-3.5"></i>Clear</button>
+        </div>
+        <div id="assetFilters" class="flex gap-1 text-[12px]">
+          <button data-f="all" class="asset-chip active">All</button>
+          <button data-f="screenshot" class="asset-chip">Images</button>
+          <button data-f="text" class="asset-chip">Text</button>
+          <button data-f="download" class="asset-chip">Files</button>
+        </div>
+      </div>
+      <div id="assetList" class="min-h-0 flex-1 space-y-2 overflow-y-auto p-3"></div>
     </div>
 
     <div id="settingsPane" class="flex-1 space-y-6 overflow-y-auto p-4" hidden>

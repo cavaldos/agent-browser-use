@@ -248,6 +248,17 @@ func evalJS[T any](t *Tab, expr string) (T, error) {
 	return v, jsError(err)
 }
 
+// evalRef evaluates a page-helper expression on the tab, routing refs like
+// "f1e12" into that cross-origin iframe. For the main frame it is plain evalJS.
+func evalRef[T any](t *Tab, ref, expr string) (T, error) {
+	fr := parseFrameRef(ref)
+	if fr.Frame == 0 {
+		return evalJS[T](t, expr)
+	}
+	// Inside the iframe: same helper, but evaluated in that frame's own world.
+	return evalInFrameAs[T](t.ctx, fr.Frame, expr)
+}
+
 const agentMissing = "__abu_missing__"
 
 // agentReady throws unless the current version of agent.js is loaded in the page.
@@ -447,10 +458,28 @@ func (a *Agent) locate(ref string) (box, error) {
 	if ref == "" {
 		return bx, errors.New("ref is required: take a snapshot (browser_snapshot) and pass the ref of the element, e.g. \"e12\"")
 	}
+	fr := parseFrameRef(ref)
 	err := a.act(func(t *Tab) error {
 		var err error
-		bx, err = evalJS[box](t, "__abu.locate("+jsq(ref)+")")
-		return err
+		bx, err = evalRef[box](t, ref, "__abu.locate("+jsq(fr.Rest)+")")
+		if err != nil || fr.Frame == 0 {
+			return err
+		}
+		// Coordinates came from inside the iframe: add where the iframe sits on
+		// the page, and measure against the page's own viewport instead.
+		off, oerr := frameOrigin(t, fr.Frame)
+		if oerr != nil {
+			return oerr
+		}
+		bx.X += off.X
+		bx.Y += off.Y
+		bx.CX += off.X
+		bx.CY += off.Y
+		v := a.b.viewSize()
+		bx.VW, bx.VH = float64(v.Width), float64(v.Height)
+		bx.CX = min(max(bx.CX, 1), bx.VW-1)
+		bx.CY = min(max(bx.CY, 1), bx.VH-1)
+		return nil
 	})
 	if err == nil {
 		a.pause(80 * time.Millisecond) // let the scroll reach the screen
@@ -788,9 +817,10 @@ func (a *Agent) Type(ref, element, text string, submit, clear bool) error {
 		return err
 	}
 	hadText := false
+	fr := parseFrameRef(ref)
 	if err := a.act(func(t *Tab) error {
 		var err error
-		hadText, err = evalJS[bool](t, fmt.Sprintf("__abu.prepareInput(%s, %t)", jsq(ref), clear))
+		hadText, err = evalRef[bool](t, ref, fmt.Sprintf("__abu.prepareInput(%s, %t)", jsq(fr.Rest), clear))
 		return err
 	}); err != nil {
 		return err
@@ -905,10 +935,18 @@ func (a *Agent) SelectOption(ref, element string, values []string) ([]string, er
 	a.pause(200 * time.Millisecond)
 	a.hub.agentSend(Msg{Type: "agent", Act: "click", X: a.x, Y: a.y, TabID: a.tabID, WorkerID: a.workerID})
 	var picked []string
+	fr := parseFrameRef(ref)
 	err = a.act(func(t *Tab) error {
 		vals, _ := json.Marshal(values)
 		var err error
-		picked, err = evalJS[[]string](t, fmt.Sprintf("__abu.selectOption(%s, %s)", jsq(ref), vals))
+		if fr.Frame == 0 {
+			picked, err = evalJS[[]string](t, fmt.Sprintf("__abu.selectOption(%s, %s)", jsq(ref), vals))
+			return err
+		}
+		// Inside an iframe: a real <select> is set directly; a custom combobox
+		// (Stripe's country picker, most design systems) is opened and clicked
+		// with its options, because no native popup is painted in headless.
+		picked, err = evalInFrameAs[[]string](t.ctx, fr.Frame, pickOptionExpr(fr.Rest, values))
 		return err
 	})
 	if err != nil {
@@ -1104,7 +1142,15 @@ func (a *Agent) Evaluate(fn, ref string) (string, error) {
 	var out string
 	err := a.act(func(t *Tab) error {
 		var err error
-		out, err = evalJS[string](t, expr)
+		fr := parseFrameRef(ref)
+		if fr.Frame == 0 {
+			out, err = evalJS[string](t, expr)
+			return err
+		}
+		// A ref from inside an iframe (f1e12): run in that frame's own world, with
+		// that frame's ref.
+		inner := strings.ReplaceAll(expr, "__abu.get("+jsq(ref)+")", "__abu.get("+jsq(fr.Rest)+")")
+		out, err = evalInFrameAs[string](t.ctx, fr.Frame, inner)
 		return err
 	})
 	if len(out) > 50000 {
@@ -1247,13 +1293,24 @@ func (a *Agent) Changes() (string, error) { return a.snapshot(true) }
 
 func (a *Agent) snapshot(diff bool) (string, error) {
 	var snap string
+	var docs []frameDoc
 	err := a.evalRetry(func(t *Tab) error {
 		var err error
 		snap, err = evalJS[string](t, "__abu.snapshot()")
-		return err
+		if err != nil {
+			return err
+		}
+		// Cross-origin iframes are separate targets: their contents are read in
+		// their own context and appended with f<N> refs, so the model can act on
+		// them the same way as the page itself.
+		docs = a.frameDocs(t, snap)
+		return nil
 	})
 	if err != nil {
 		return "", err
+	}
+	if len(docs) > 1 {
+		snap = joinFrameOutlines(docs)
 	}
 	tabs, active, _, _ := a.b.State()
 	if a.tabID != "" {

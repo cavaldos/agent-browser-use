@@ -1072,15 +1072,16 @@ func (a *Agent) WaitFor(seconds float64, text, gone string) error {
 }
 
 func (a *Agent) Screenshot() (string, error) {
-	q := int64(80)
 	var data []byte
 	err := a.look(func(t *Tab) error {
-		shot, err := chromedp.Call(t.ctx, page.CaptureScreenshot, page.CaptureScreenshotParams{Format: page.CaptureScreenshotFormatJpeg, Quality: &q})
-		if err == nil {
-			data = shot.Data
-		}
+		var err error
+		data, err = a.b.shot(t)
 		return err
 	})
+	if err == nil && a.hub.assets != nil {
+		u, title := a.b.pageOf()
+		a.hub.assets.add(Asset{Kind: "screenshot", Name: shotName(), Mime: "image/jpeg", URL: u, Title: title, By: "agent"}, data)
+	}
 	return base64.StdEncoding.EncodeToString(data), err
 }
 

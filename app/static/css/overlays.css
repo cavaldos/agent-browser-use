@@ -88,3 +88,26 @@
 .flow-step .acts { display: flex; flex-shrink: 0; opacity: 0; transition: opacity .15s; }
 .flow-step:hover .acts, .flow-step:focus-within .acts { opacity: 1; }
 @media (hover: none) { .flow-step .acts { opacity: 1; } }
+
+/* Four sidebar tabs: keep them on one row */
+#sidebar .side-tab { gap: 4px; padding-left: 2px; padding-right: 2px; white-space: nowrap; }
+
+/* Assets tab */
+.asset-chip { flex: 1; border-radius: 6px; padding: 5px 0; font-weight: 500; color: var(--dim); background: var(--hover); transition: background .15s, color .15s; }
+.asset-chip:hover { color: var(--fg); }
+.asset-chip.active { background: var(--accent-soft); color: var(--accent-fg); }
+.asset-card { border: 1px solid var(--line-soft); border-radius: 12px; background: var(--panel); overflow: hidden; transition: border-color .15s; }
+.asset-card:hover { border-color: var(--line); }
+.asset-card.fresh { animation: asset-in 1.6s ease-out; }
+@keyframes asset-in { 0% { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); } 100% { box-shadow: 0 0 0 0 transparent; } }
+.asset-thumb { display: block; width: 100%; max-height: 200px; object-fit: cover; object-position: top; cursor: zoom-in; background: var(--field); }
+.asset-pre { max-height: 6.2em; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: 8px; background: var(--field); padding: 6px 8px; font: 11.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--fg-2); }
+.asset-kind { display: inline-flex; align-items: center; gap: 4px; border-radius: 99px; padding: 1px 7px; font-size: 10.5px; font-weight: 600; background: var(--hover); color: var(--dim); }
+.asset-kind.screenshot { background: var(--accent-soft); color: var(--accent-fg); }
+.asset-kind.copy { background: var(--warn-soft); color: var(--warn-fg); }
+.asset-kind.element { background: var(--ok-soft); color: var(--ok-fg); }
+#assetLightbox { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; background: rgb(0 0 0 / .86); backdrop-filter: blur(3px); }
+#assetLightbox img { min-height: 0; flex: 1; width: 100%; object-fit: contain; padding: 12px; }
+
+/* Inspect (DevTools) panel */
+#inspectBtn.on { background: var(--accent-soft); color: var(--accent-fg); }

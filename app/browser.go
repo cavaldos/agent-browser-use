@@ -23,6 +23,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"os/exec"
 	"runtime"
 	"slices"
 	"strconv"
@@ -56,6 +57,7 @@ type BrowserOptions struct {
 	UploadDir     string // files the agent may upload
 	StateDir      string // saved cookie/storage states (browser_state)
 	FlowDir       string // recorded flows (browser_get_flow / browser_run_flow)
+	NoDevTools    bool   // do not open Chrome's local debugging port: no Inspect in the viewer
 }
 
 // View is the size and image quality of the shared screen.
@@ -366,6 +368,15 @@ func startBrowser(hub *Hub, opt BrowserOptions) (*Browser, error) {
 // launch starts Chrome and opens the start page. Used at startup and by restart.
 func (b *Browser) launch() error {
 	opts := append(chromeFlags(b.opt), chromedp.UserAgent(b.ua), chromedp.UserDataDir(b.opt.Profile))
+	if !b.opt.NoDevTools {
+		// chromedp talks to Chrome over a pipe and so opens no port. The viewer's Inspect needs one
+		// (it is only reachable from this machine, and the viewer goes through devtools.go).
+		// It cannot be a Flag: chromedp would then switch the pipe off. Both can run together.
+		opts = append(opts, chromedp.ModifyCmdFunc(func(cmd *exec.Cmd) {
+			cmd.Args = append(cmd.Args, "--remote-debugging-port=0")
+			chromeCmdOptions(cmd)
+		}))
+	}
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
 	root, _ := chromedp.NewContext(allocCtx)
 	// Starts Chrome and attaches to its first blank tab. Do binds the browser to root,
@@ -853,6 +864,21 @@ func (b *Browser) viewSize() View {
 	return b.view
 }
 
+// screen is the configured screen size together with the device emulation in force,
+// which together decide the real viewport a capture or a frame must cover.
+func (b *Browser) screen() (View, Emulation) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.view, b.emu
+}
+
+// screenEmu is the device emulation in force, on its own.
+func (b *Browser) screenEmu() Emulation {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.emu
+}
+
 // Close shuts Chrome down, so no process is left behind when we exit.
 func (b *Browser) Close() {
 	b.mu.Lock()
@@ -1058,13 +1084,20 @@ func (b *Browser) activate(t *Tab) {
 
 func (b *Browser) startScreencast(t *Tab, v View) {
 	q := int64(v.Quality)
+	// Allow full device-pixel frames so text stays sharp. The factor has to be the
+	// one Chrome actually renders at: asking for more than that made Chrome compose
+	// an oversized surface and hand back a tiled 2x2 frame instead of the viewport.
+	scale := 1.0
+	if m := metrics(v, b.screenEmu()); m.DeviceScaleFactor > 1 {
+		scale = m.DeviceScaleFactor
+	}
+	maxW, maxH := int64(float64(v.Width)*scale), int64(float64(v.Height)*scale)
 	// Chrome refuses while a page is between two documents, so retry briefly.
 	for try := 0; try < 10; try++ {
 		ctx, cancel := context.WithTimeout(t.ctx, 5*time.Second)
 		_, err := chromedp.Call(ctx, page.StartScreencast, page.StartScreencastParams{
 			Format: page.StartScreencastFormatJpeg, Quality: &q,
-			// Allow full device-pixel frames (pages render at up to 3x), so text stays sharp.
-			MaxWidth: int64(v.Width) * 3, MaxHeight: int64(v.Height) * 3, EveryNthFrame: 1,
+			MaxWidth: maxW, MaxHeight: maxH, EveryNthFrame: 1,
 		})
 		cancel()
 		if err == nil || t.ctx.Err() != nil || strings.Contains(err.Error(), "already active") {
@@ -1085,7 +1118,22 @@ func (b *Browser) startScreencast(t *Tab, v View) {
 			return
 		}
 		ctx, cancel := cmdCtx(t.ctx)
-		shot, err := chromedp.Call(ctx, page.CaptureScreenshot, page.CaptureScreenshotParams{Format: page.CaptureScreenshotFormatJpeg, Quality: &q})
+		// Same clip as a normal capture: without it Chrome may hand back a frame
+		// composed from an oversized surface, i.e. the viewport tiled at quarter size.
+		m := metrics(v, b.screenEmu())
+		var shotClip *page.Viewport
+		if m.Width > 0 && m.Height > 0 {
+			fs := m.DeviceScaleFactor
+			if fs <= 0 {
+				fs = 1
+			}
+			shotClip = &page.Viewport{X: 0, Y: 0, Width: float64(m.Width), Height: float64(m.Height), Scale: fs}
+		}
+		noBeyond, fromView := false, false
+		shot, err := chromedp.Call(ctx, page.CaptureScreenshot, page.CaptureScreenshotParams{
+			Format: page.CaptureScreenshotFormatJpeg, Quality: &q,
+			Clip: shotClip, FromSurface: &fromView, CaptureBeyondViewport: &noBeyond,
+		})
 		cancel()
 		if err != nil {
 			return
@@ -1101,6 +1149,40 @@ func (b *Browser) startScreencast(t *Tab, v View) {
 			b.hub.broadcastFrame(pkt)
 		}
 	}()
+}
+
+// shot captures what tab t shows, as a JPEG.
+func (b *Browser) shot(t *Tab) ([]byte, error) {
+	q := int64(80)
+	// Pin the capture to the configured screen. Without a clip, Chrome composes the
+	// shot from whatever surface it last used for the tab, and that surface can be
+	// larger than the view (the page is scrollable, or emulation changed the device
+	// scale factor), which makes the viewport come out tiled 2x2 at quarter size.
+	v, emu := b.screen()
+	m := metrics(v, emu)
+	// A browser that was never sized (tests) has no view: leave the clip off then,
+	// so the capture keeps Chrome's own default instead of an empty region.
+	var clip *page.Viewport
+	if m.Width > 0 && m.Height > 0 {
+		scale := m.DeviceScaleFactor
+		if scale <= 0 {
+			scale = 1
+		}
+		// Clip is in CSS pixels; Scale keeps the device-pixel resolution the shots had before.
+		clip = &page.Viewport{X: 0, Y: 0, Width: float64(m.Width), Height: float64(m.Height), Scale: scale}
+	}
+	no, fromView := false, false
+	shot, err := chromedp.Call(t.ctx, page.CaptureScreenshot, page.CaptureScreenshotParams{
+		Format:                page.CaptureScreenshotFormatJpeg,
+		Quality:               &q,
+		Clip:                  clip,
+		FromSurface:           &fromView,
+		CaptureBeyondViewport: &no,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return shot.Data, nil
 }
 
 func (b *Browser) findLocked(id string) int {
@@ -1165,6 +1247,7 @@ func (b *Browser) onBrowserEvent(ev any) {
 	case *browser.EventDownloadWillBegin, *browser.EventDownloadProgress:
 		if done := b.dl.event(ev, b.opt.DownloadDir); done != nil {
 			go b.hub.systemChat("Downloaded " + done.Name)
+			b.hub.assets.addDownload(done)
 		}
 	case *target.EventTargetCrashed:
 		id := string(e.TargetID)

@@ -51,3 +51,19 @@
       <div id="flowPop" class="pop rounded-xl border border-blue-400/60 bg-zinc-900/95 p-3 text-[13px] text-zinc-200 shadow-2xl backdrop-blur" hidden></div>
       <div id="toasts" class="pointer-events-none absolute inset-x-4 bottom-16 z-20 flex flex-col items-center gap-2"></div>
     </section>
+
+    <!-- Inspect: Chrome DevTools of the tab on screen, docked under the shared screen -->
+    <section id="devPanel" class="relative flex shrink-0 flex-col border-t border-white/[.08] bg-[#202124]" hidden>
+      <div id="devResize" class="absolute inset-x-0 -top-1 z-10 h-2 cursor-row-resize" title="Drag to resize"></div>
+      <div class="flex h-9 shrink-0 items-center gap-2 border-b border-white/[.06] bg-[#0f0f12] px-3 text-xs text-zinc-400">
+        <i data-icon="code" class="h-3.5 w-3.5 shrink-0"></i>
+        <span class="shrink-0 font-medium text-zinc-200">DevTools</span>
+        <span id="devTarget" class="min-w-0 flex-1 truncate"></span>
+        <button id="devPop" class="icon-btn h-7 w-7" title="Open in its own window"><i data-icon="external" class="h-3.5 w-3.5"></i></button>
+        <button id="devClose" class="icon-btn h-7 w-7" title="Close DevTools"><i data-icon="x" class="h-3.5 w-3.5"></i></button>
+      </div>
+      <div class="relative min-h-0 flex-1">
+        <iframe id="devFrame" class="absolute inset-0 h-full w-full border-0" title="Chrome DevTools"></iframe>
+        <div id="devShield" class="absolute inset-0 z-10" hidden></div>
+      </div>
+    </section>

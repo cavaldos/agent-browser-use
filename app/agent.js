@@ -238,7 +238,12 @@
         let doc = null;
         try { doc = el.contentDocument; } catch {}
         const name = nameOf(el, role);
-        if (!doc?.body) return line(depth, `- iframe${name ? " " + q(name) : ""} (cross-origin, content not available)`);
+        // A cross-origin iframe has no contentDocument here; its contents are
+        // read in an isolated world of that frame and land under "iframe [fN]"
+        // in the outline, so this line is just the anchor. It says "below" only
+        // because that is where the Go side appends them; when a frame could not
+        // be read the outline says so there instead.
+        if (!doc?.body) return line(depth, `- iframe${name ? " " + q(name) : ""} (cross-origin, see "iframe [fN]" below)`);
         line(depth, `- iframe${name ? " " + q(name) : ""}:`);
         return walkChildren(doc.body, depth + 1);
       }
@@ -283,10 +288,21 @@
     let rect = el.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0 && el.getClientRects().length) rect = el.getClientRects()[0];
     let x = rect.left, y = rect.top;
-    for (let w = el.ownerDocument.defaultView; w && w !== w.top && w.frameElement; w = w.parent) {
-      const fr = w.frameElement.getBoundingClientRect();
-      x += fr.left + w.frameElement.clientLeft;
-      y += fr.top + w.frameElement.clientTop;
+    // Only the main frame adds the offsets of the iframes above the element.
+    // Inside an iframe (an isolated world, or a frame the caller drives on its
+    // own) the box must stay frame-local: the caller adds the iframe's own
+    // position, which it knows from Page.getFrameTree.
+    const inFrame = window !== window.top;
+    if (!inFrame) {
+      for (let w = el.ownerDocument.defaultView, guard = 0; w && w !== w.top && guard < 16; guard++) {
+        let fe = null;
+        try { fe = w.frameElement; } catch { fe = null; } // cross-origin: SecurityError
+        if (!fe) break;
+        const fr = fe.getBoundingClientRect();
+        x += fr.left + fe.clientLeft;
+        y += fr.top + fe.clientTop;
+        try { w = w.parent; } catch { break; }
+      }
     }
     if (rect.width === 0 && rect.height === 0) throw new Error(`Element ${r} is not visible on the page.`);
     const vw = innerWidth, vh = innerHeight;

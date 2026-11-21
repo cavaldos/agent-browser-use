@@ -240,6 +240,16 @@ var tools = []tool{
 			"ref":     refProp,
 			"values":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Values or visible labels of the options"},
 		}, "element", "ref", "values")},
+	{Name: "browser_open_picker", Title: "Show dropdown options", Description: "Show the options of a <select> inline, so the list is visible in the stream and in screenshots. Headless Chrome never paints the native dropdown popup, so clicking one otherwise looks like nothing happened. Pair with browser_close_picker.",
+		InputSchema: schema(map[string]any{
+			"element": elementProp,
+			"ref":     refProp,
+		}, "element", "ref")},
+	{Name: "browser_close_picker", Title: "Hide dropdown options", Description: "Put a <select> back the way it was before browser_open_picker.",
+		InputSchema: schema(map[string]any{
+			"element": elementProp,
+			"ref":     refProp,
+		}, "element", "ref")},
 	{Name: "browser_scroll", Title: "Scroll", Description: "Scroll the page (or the element under ref) with the mouse wheel.",
 		InputSchema: schema(map[string]any{
 			"direction": map[string]any{"type": "string", "enum": []string{"down", "up", "left", "right"}, "description": "Default down"},
@@ -478,7 +488,8 @@ type toolArgs struct {
 
 // inputTools act on the page with the mouse or keyboard; they run one at a time per tab.
 var inputTools = map[string]bool{"browser_click": true, "browser_drag": true, "browser_hover": true, "browser_type": true,
-	"browser_press_key": true, "browser_scroll": true, "browser_select_option": true, "browser_run_flow": true}
+	"browser_press_key": true, "browser_scroll": true, "browser_select_option": true, "browser_open_picker": true,
+	"browser_close_picker": true, "browser_run_flow": true}
 
 func (s *MCPServer) callTool(name string, raw json.RawMessage, seat *Seat) toolResult {
 	a := s.agent
@@ -603,6 +614,12 @@ func (s *MCPServer) callTool(name string, raw json.RawMessage, seat *Seat) toolR
 	case "browser_select_option":
 		picked, err := a.SelectOption(args.Ref, args.Element, args.Values)
 		return withSnapshot("Selected "+strings.Join(picked, ", "), "", err)
+	case "browser_open_picker":
+		msg, err := a.OpenPicker(args.Ref, args.Element)
+		return withSnapshot(msg, "", err)
+	case "browser_close_picker":
+		msg, err := a.ClosePicker(args.Ref, args.Element)
+		return withSnapshot(msg, "", err)
 	case "browser_scroll":
 		return withSnapshot("Scrolled "+cmpOr(args.Direction, "down"), "", a.Scroll(args.Direction, args.Amount, args.Ref, args.Element))
 	case "browser_drag":

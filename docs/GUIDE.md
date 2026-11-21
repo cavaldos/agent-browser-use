@@ -112,6 +112,7 @@ on has a `ref` (for example `e12`). Pass that `ref` to the action tools. Every a
 | `browser_type` | Click a text field and type. `clear` (default true) replaces the old content; `submit` presses Enter |
 | `browser_press_key` | Press a key or shortcut: `Enter`, `Escape`, `ArrowDown`, `Tab`, `Control+A`, `Shift+Tab`… |
 | `browser_select_option` | Pick options in a `<select>` by value or label |
+| `browser_open_picker` / `browser_close_picker` | Show a `<select>`'s options inline, so the list is visible |
 | `browser_scroll` | Scroll the page (or inside an element) with the mouse wheel |
 | `browser_drag` | Drag one element onto another |
 | `browser_wait_for` | Wait for text to appear or disappear, or for a number of seconds |
@@ -212,8 +213,46 @@ printed at startup). They hear the page's audio, chat, send emoji reactions, and
 | `app/browser.go` | Headless Chrome: tabs, screencast, audio, people's mouse/keyboard |
 | `app/agent.go` | The agent's actions and what viewers see of them |
 | `app/agent.js` | Runs in the page: snapshot, `ref`s, element positions |
+| `app/frames.go` | Cross-origin iframes: frame tree, isolated worlds, `f<N>` refs |
 | `app/mcp.go` | MCP protocol, tool list, stdio/HTTP transports |
 | `app/static/` | Web UI |
+
+## Cross-origin iframes
+
+A page from another site (an embedded checkout form, a payment or login widget)
+has no `contentDocument` from the top page, so its contents are read a different
+way: `Page.getFrameTree` lists every frame, and each one is given an execution
+context with `Page.createIsolatedWorld`. The page helper runs in that context, so
+the same outline, refs and tools work inside an iframe.
+
+Frames are labelled in the snapshot with `f<N>`, counting from 1 in document
+order, and their refs carry the same prefix: `f1e12` is ref `e12` inside iframe 1.
+Pass those refs to the usual tools — `browser_click`, `browser_type`,
+`browser_select_option`, `browser_evaluate` — exactly like refs from the page.
+
+```yaml
+- heading "Subscribe to Max" [level=2]
+- iframe "Secure currency selector" (cross-origin, see "iframe [fN]" below)
+- iframe "Secure embedded form frame" (cross-origin, see "iframe [fN]" below)
+
+--- iframe [f4] https://js.stripe.com/v3/elements-inner-habanero.html ---
+- group "Billing details":
+  - combobox "Country or region" [ref=f4e7]: Hong Kong SAR China
+    [options: Country or region | Afghanistan | Åland Islands | …]
+  - textbox "Full name" [ref=f4e6]
+  - button "Subscribe" [ref=f4e16]
+```
+
+Nested iframes are listed too, parents before children. To keep the outline
+readable, a frame header shows only its origin and path (the query string is
+dropped), and at most the first 10 frames with content are listed; the rest are
+summarized in one line.
+
+This depends on iframes staying in the page's process, which is what
+`--disable-site-isolation-trials` in `chromeFlags` does. With site isolation on,
+Chrome gives each cross-origin iframe its own process and `Page.getFrameTree`
+reports no child frames at all, so nothing inside an iframe can be read. The
+server logs a one-time warning if it sees that combination.
 
 ## Data
 
@@ -233,6 +272,10 @@ printed at startup). They hear the page's audio, chat, send emoji reactions, and
 ## Limitations
 
 - No file upload/download, no browser extensions.
-- Native `<select>` popups don't show in the stream. The agent picks options with `browser_select_option`.
-- Snapshots can't read the content of cross-origin iframes.
+- Native `<select>` popups are drawn by the browser, so they don't show in the stream or in a
+  screenshot. Set the value with `browser_select_option`, or call `browser_open_picker` to render
+  the options inline (visible), then `browser_close_picker` when done.
+- Iframes are read (see [Cross-origin iframes](#cross-origin-iframes)), but only the first 10
+  with content are listed per snapshot, and a frame you could not read is reported instead of
+  being silently skipped.
 - Sound from cross-origin media without CORS headers can't be captured.

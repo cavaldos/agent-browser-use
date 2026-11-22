@@ -579,6 +579,10 @@ const JOB_LIMIT: Duration = Duration::from_secs(30);
 pub async fn detect_user_agent(
     opt: &BrowserOptions,
 ) -> BResult<(String, Option<UserAgentMetadata>)> {
+    if opt.engine.is_obscura() {
+        // no Chrome user agent or client hints to read; Obscura keeps its own
+        return Ok((String::new(), None));
+    }
     // only reads the version: no network, so no need to wait on the proxy/WARP
     let flags = chrome_flags(&BrowserOptions {
         proxy: String::new(),
@@ -590,6 +594,8 @@ pub async fn detect_user_agent(
     let chrome = cdp::launch(LaunchSpec {
         exec_path: opt.engine.path.clone(),
         flags,
+        obscura: false,
+        cdp_url: String::new(),
         debug_port: false,
     })
     .await?;
@@ -677,6 +683,7 @@ async fn first_page_session(chrome: &Chrome) -> BResult<(String, String)> {
 }
 
 async fn first_page_target(chrome: &Chrome) -> BResult<String> {
+    let mut created = false;
     loop {
         let r = chrome
             .conn
@@ -688,6 +695,18 @@ async fn first_page_target(chrome: &Chrome) -> BResult<String> {
             .and_then(|l| l.iter().find(|t| t["type"] == "page"))
         {
             return Ok(t["targetId"].as_str().unwrap_or_default().to_string());
+        }
+        if chrome.obscura && !created {
+            // Obscura starts with no tab at all
+            created = true;
+            let r = chrome
+                .conn
+                .call(None, "Target.createTarget", json!({"url": "about:blank"}))
+                .await
+                .map_err(|e| e.to_string())?;
+            if let Some(id) = r["targetId"].as_str() {
+                return Ok(id.to_string());
+            }
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
@@ -914,7 +933,9 @@ impl Browser {
         let chrome = cdp::launch(LaunchSpec {
             exec_path: self.opt.engine.path.clone(),
             flags,
-            debug_port: !self.opt.no_dev_tools,
+            obscura: self.opt.engine.is_obscura(),
+            cdp_url: self.opt.engine.cdp_url.clone(),
+            debug_port: !self.opt.no_dev_tools && !self.opt.engine.is_obscura(),
         })
         .await?;
         // Starts Chrome and attaches to its first blank tab; bounded by a timer.
@@ -949,10 +970,14 @@ impl Browser {
             )
             .await
         {
-            chrome.kill();
-            return Err(e.to_string());
+            if chrome.obscura {
+                golog(&format!("obscura: target discovery: {e}"));
+            } else {
+                chrome.kill();
+                return Err(e.to_string());
+            }
         }
-        if !self.opt.download_dir.is_empty() {
+        if !self.opt.download_dir.is_empty() && !chrome.obscura {
             if let Err(e) = self
                 .root_call(
                     "Browser.setDownloadBehavior",
@@ -1017,10 +1042,14 @@ impl Browser {
                 (browser_fails, tab_fails) = (0, 0);
                 continue;
             }
-            let r = root
-                .conn
-                .call_with(None, "Browser.getVersion", json!({}), Some(LIMIT), None)
-                .await;
+            // Obscura has no Browser.getVersion to ping: a dead process or connection is caught above
+            let r = if root.obscura {
+                Ok(Value::Null)
+            } else {
+                root.conn
+                    .call_with(None, "Browser.getVersion", json!({}), Some(LIMIT), None)
+                    .await
+            };
             if r.is_err() {
                 browser_fails += 1;
                 if browser_fails >= 2 {
@@ -1548,6 +1577,7 @@ impl Browser {
         let rx = t.subscribe();
         tokio::spawn(self.clone().tab_events(t.clone(), rx));
         // the domains enabled on every target it attaches to
+        let obscura = self.opt.engine.is_obscura();
         let setup = async {
             for (m, p) in [
                 ("Runtime.enable", json!({})),
@@ -1556,7 +1586,12 @@ impl Browser {
                 ("Page.enable", json!({})),
                 ("DOM.enable", json!({})),
             ] {
-                t.call_cmd(m, p).await?;
+                if let Err(e) = t.call_cmd(m, p).await {
+                    if !obscura {
+                        return Err(e);
+                    }
+                    golog(&format!("obscura: {m}: {e}"));
+                }
             }
             Ok::<(), CdpError>(())
         };
@@ -1608,7 +1643,15 @@ impl Browser {
             let st = self.st();
             (st.view, st.emu.clone())
         };
-        let e = |r: CdpResult| r.map(|_| ()).map_err(|e| e.to_string());
+        // Obscura lacks some of these (see engine::OBSCURA_NOTICE): a refused step is skipped there
+        let obscura = self.opt.engine.is_obscura();
+        let e = |r: CdpResult| match r {
+            Err(err) if obscura => {
+                golog(&format!("obscura: skipped: {err}"));
+                Ok(())
+            }
+            r => r.map(|_| ()).map_err(|e| e.to_string()),
+        };
         // first, so it runs before every other script in the page (stealth.rs)
         e(t.call(
             "Page.addScriptToEvaluateOnNewDocument",

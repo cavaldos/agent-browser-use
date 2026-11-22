@@ -125,6 +125,7 @@ pub struct Config {
     pub chrome: String,
     pub proxy: String,
     pub engine: String,
+    pub cdp_url: String,
     pub downloads: String,
     pub uploads: String,
     pub states: String,
@@ -211,7 +212,8 @@ fn specs(env: &dyn Fn(&str) -> Option<String>) -> Vec<Spec> {
         spec("profile", Str, s(""), "folder for the shared browser's cookies/logins (empty = \"chrome-profile\" inside the home folder)"),
         spec("chrome", Str, s(""), "path to the browser executable (empty = auto-detect)"),
         spec("proxy", Str, Val::Str(env(PROXY_ENV).unwrap_or_default()), "upstream SOCKS5 proxy for the shared browser only, e.g. socks5://127.0.0.1:40000 (empty = built-in Cloudflare WARP); the header switch turns it on/off"),
-        spec("engine", Str, s("auto"), "browser to run: chromium, chrome, edge, brave, vivaldi, headless-shell (lightest); auto = Chromium, else the first one installed"),
+        spec("engine", Str, s("auto"), "browser to run: chromium, chrome, edge, brave, vivaldi, headless-shell (lightest), obscura (experimental, never picked by auto); auto = Chromium, else the first one installed"),
+        spec("cdp-url", Str, s(""), "connect to an Obscura that is already running instead of starting a browser, e.g. ws://127.0.0.1:9222 (implies -engine obscura)"),
         spec("downloads", Str, s(""), "folder for downloaded files (empty = \"downloads\" next to the profile folder)"),
         spec("uploads", Str, s(""), "folder the agent may upload files from (empty = \"uploads\" next to the profile folder)"),
         spec("states", Str, s(""), "folder for saved logins/sessions (empty = \"states\" next to the profile folder)"),
@@ -523,6 +525,7 @@ pub fn parse_args(
         chrome: st("chrome"),
         proxy: st("proxy"),
         engine: st("engine"),
+        cdp_url: st("cdp-url"),
         downloads: st("downloads"),
         uploads: st("uploads"),
         states: st("states"),
@@ -2007,7 +2010,11 @@ async fn run(parsed: Parsed) -> ExitCode {
     let mut shared_browser: Option<Arc<browser::Browser>> = None;
     let share_hooks = share::Share::new();
     if !cfg.no_browser {
-        let eng = match engine::resolve_engine(&cfg.engine, &cfg.chrome) {
+        let eng = match if cfg.cdp_url.is_empty() {
+            engine::resolve_engine(&cfg.engine, &cfg.chrome)
+        } else {
+            engine::resolve_cdp_url(&cfg.engine, &cfg.cdp_url)
+        } {
             Ok(e) => e,
             Err(e) => return fatal(&e),
         };
@@ -2063,8 +2070,16 @@ async fn run(parsed: Parsed) -> ExitCode {
         }
         out(&format!(
             "Shared browser started (headless {}: {})\n",
-            eng.label, eng.path
+            eng.label,
+            if eng.cdp_url.is_empty() {
+                &eng.path
+            } else {
+                &eng.cdp_url
+            }
         ));
+        if eng.is_obscura() {
+            out(&format!("{}\n", engine::OBSCURA_NOTICE));
+        }
     }
 
     hub.set_hooks(Arc::new(agent::AppHooks {
@@ -2371,7 +2386,7 @@ mod tests {
         let mut sorted = names.clone();
         sorted.sort();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 33);
+        assert_eq!(names.len(), 34);
     }
 
     #[test]

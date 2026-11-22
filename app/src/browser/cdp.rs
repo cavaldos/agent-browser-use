@@ -76,7 +76,24 @@ pub struct Conn {
     pending: Mutex<HashMap<u64, Reply>>,
     subs: Mutex<Subs>,
     closed: watch::Sender<bool>,
+    /// methods the engine on the other end does not have: they fail at once (see `OBSCURA_UNSUPPORTED`)
+    unsupported: &'static [&'static str],
 }
+
+/// Commands this program sends that Obscura does not implement. They are answered here with a clear
+/// error instead of being sent, so a server that ignores unknown methods can never leave one waiting.
+pub const OBSCURA_UNSUPPORTED: &[&str] = &[
+    "Emulation.setFocusEmulationEnabled",
+    "Emulation.setTouchEmulationEnabled",
+    "Emulation.setLocaleOverride",
+    "Emulation.setTimezoneOverride",
+    "Emulation.setGeolocationOverride",
+    "Emulation.clearGeolocationOverride",
+    "Browser.setPermission",
+    "Browser.setDownloadBehavior",
+    "Log.enable",
+    "Log.disable",
+];
 
 /// Waits until a watch flag is true (the `Ref` guard of `wait_for` is not `Send`, so it is dropped here).
 pub async fn flagged(rx: &mut watch::Receiver<bool>) {
@@ -88,7 +105,7 @@ fn lk<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 impl Conn {
-    fn new() -> (Arc<Conn>, mpsc::UnboundedReceiver<String>) {
+    fn new(unsupported: &'static [&'static str]) -> (Arc<Conn>, mpsc::UnboundedReceiver<String>) {
         let (out, out_rx) = mpsc::unbounded_channel();
         let (closed, _) = watch::channel(false);
         (
@@ -98,6 +115,7 @@ impl Conn {
                 pending: Mutex::new(HashMap::new()),
                 subs: Mutex::new(Vec::new()),
                 closed,
+                unsupported,
             }),
             out_rx,
         )
@@ -109,7 +127,7 @@ impl Conn {
         R: AsyncRead + Send + Unpin + 'static,
         W: AsyncWrite + Send + Unpin + 'static,
     {
-        let (c, mut out_rx) = Conn::new();
+        let (c, mut out_rx) = Conn::new(&[]);
         let rc = c.clone();
         tokio::spawn(async move {
             let mut r = BufReader::new(r);
@@ -151,13 +169,21 @@ impl Conn {
     /// A connection over a DevTools websocket (used where Chrome cannot be given a pipe).
     #[cfg_attr(unix, allow(dead_code))]
     pub async fn over_ws(url: &str) -> Result<Arc<Conn>, String> {
+        Conn::over_ws_with(url, &[]).await
+    }
+
+    /// `over_ws` for an engine that lacks some commands (they fail at once, see `call`).
+    pub async fn over_ws_with(
+        url: &str,
+        unsupported: &'static [&'static str],
+    ) -> Result<Arc<Conn>, String> {
         use futures_util::{SinkExt, StreamExt};
         use tokio_tungstenite::tungstenite::Message;
         let (ws, _) = tokio_tungstenite::connect_async(url)
             .await
             .map_err(|e| format!("could not dial {url:?}: {e}"))?;
         let (mut tx, mut rx) = ws.split();
-        let (c, mut out_rx) = Conn::new();
+        let (c, mut out_rx) = Conn::new(unsupported);
         let rc = c.clone();
         tokio::spawn(async move {
             while let Some(Ok(m)) = rx.next().await {
@@ -245,6 +271,9 @@ impl Conn {
 
     /// Sends a command nobody waits for (no answer is expected). Safe from any thread, never blocks.
     pub fn send_nowait(&self, method: &str, params: Value) {
+        if self.unsupported.contains(&method) {
+            return;
+        }
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let _ = self
             .out
@@ -264,6 +293,12 @@ impl Conn {
 
     /// Sends one command and waits for the answer (no timeout of its own: see `call_with`).
     pub async fn call(&self, session: Option<&str>, method: &str, params: Value) -> CdpResult {
+        if self.unsupported.contains(&method) {
+            return Err(CdpError::Remote {
+                code: -32601,
+                message: format!("{method} is not supported by this browser engine"),
+            });
+        }
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
         lk(&self.pending).insert(id, tx);
@@ -378,11 +413,17 @@ pub struct Chrome {
     pub conn: Arc<Conn>,
     exited: watch::Receiver<bool>,
     kill: mpsc::UnboundedSender<()>,
+    /// Obscura: it starts with no tab, and lacks some commands
+    pub obscura: bool,
 }
 
 pub struct LaunchSpec {
     pub exec_path: String,
     pub flags: Flags,
+    /// start Obscura (`exec_path serve --port …`), or connect to `cdp_url`, instead of Chrome
+    pub obscura: bool,
+    /// Obscura that is already running (`ws://…` or `http://host:port`); no process is started
+    pub cdp_url: String,
     /// `--remote-debugging-port=0` next to the pipe (Inspect in the viewer needs a port)
     pub debug_port: bool,
 }
@@ -420,6 +461,9 @@ impl Chrome {
 /// Starts Chrome: flags in order, `--no-sandbox` as root,
 /// `--remote-debugging-pipe` (unix) and the blank start page; a throwaway profile when the flags name none.
 pub async fn launch(spec: LaunchSpec) -> Result<Arc<Chrome>, String> {
+    if spec.obscura {
+        return launch_obscura(&spec).await;
+    }
     let mut args = spec.flags.args();
     let mut temp_dir = None;
     if spec.flags.get("user-data-dir").is_none() {
@@ -589,5 +633,267 @@ fn supervise(
             }
         }
     });
-    Arc::new(Chrome { conn, exited, kill })
+    Arc::new(Chrome {
+        conn,
+        exited,
+        kill,
+        obscura: false,
+    })
+}
+
+// ---------- Obscura ----------
+
+/// The websocket address of a CDP server: `ws://…` as is; `http://host:port` is asked
+/// for `/json/version` (`webSocketDebuggerUrl`).
+pub async fn discover_ws_url(base: &str) -> Result<String, String> {
+    if base.starts_with("ws://") || base.starts_with("wss://") {
+        return Ok(base.to_string());
+    }
+    let url = format!("{}/json/version", base.trim_end_matches('/'));
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .no_proxy()
+        .build()
+        .map_err(|e| e.to_string())?;
+    let v: Value = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    v["webSocketDebuggerUrl"]
+        .as_str()
+        .map(str::to_string)
+        .ok_or_else(|| format!("{url} has no webSocketDebuggerUrl"))
+}
+
+async fn launch_obscura(spec: &LaunchSpec) -> Result<Arc<Chrome>, String> {
+    if !spec.cdp_url.is_empty() {
+        let ws = discover_ws_url(&spec.cdp_url)
+            .await
+            .map_err(|e| format!("could not reach Obscura at {}: {e}", spec.cdp_url))?;
+        let conn = Conn::over_ws_with(&ws, OBSCURA_UNSUPPORTED).await?;
+        return Ok(supervise_obscura(conn, None));
+    }
+    // a free local port: Obscura has no "pick one" mode
+    let port = std::net::TcpListener::bind(("127.0.0.1", 0))
+        .and_then(|l| l.local_addr())
+        .map_err(|e| e.to_string())?
+        .port();
+    let mut cmd = tokio::process::Command::new(&spec.exec_path);
+    cmd.arg("serve").arg("--port").arg(port.to_string());
+    if let Some(FlagVal::Str(p)) = spec.flags.get("proxy-server") {
+        if !p.is_empty() {
+            cmd.arg("--proxy").arg(p);
+        }
+    }
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+    crate::chromecmd::chrome_cmd_options(&mut cmd);
+    let mut child = cmd.spawn().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            format!("{}: {e}", crate::engine::OBSCURA_INSTALL)
+        } else {
+            format!("could not start {}: {e}", spec.exec_path)
+        }
+    })?;
+    let base = format!("http://127.0.0.1:{port}");
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+    let ws = loop {
+        if let Ok(Some(st)) = child.try_wait() {
+            return Err(format!("obscura exited before it was ready ({st})"));
+        }
+        match discover_ws_url(&base).await {
+            Ok(u) => break u,
+            Err(e) => {
+                if tokio::time::Instant::now() >= deadline {
+                    let _ = child.kill().await;
+                    return Err(format!("obscura did not come up on port {port}: {e}"));
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        }
+    };
+    match Conn::over_ws_with(&ws, OBSCURA_UNSUPPORTED).await {
+        Ok(conn) => Ok(supervise_obscura(conn, Some(child))),
+        Err(e) => {
+            let _ = child.kill().await;
+            Err(e)
+        }
+    }
+}
+
+/// Like `supervise` for Obscura; without a process (`-cdp-url`) killing only drops the connection.
+fn supervise_obscura(conn: Arc<Conn>, child: Option<tokio::process::Child>) -> Arc<Chrome> {
+    let (exited_tx, exited) = watch::channel(false);
+    let (kill, mut kill_rx) = mpsc::unbounded_channel::<()>();
+    let c2 = conn.clone();
+    tokio::spawn(async move {
+        match child {
+            Some(mut child) => {
+                tokio::select! {
+                    _ = child.wait() => {}
+                    _ = kill_rx.recv() => { let _ = child.kill().await; }
+                }
+            }
+            None => {
+                let mut closed = c2.closed.subscribe();
+                tokio::select! {
+                    _ = flagged(&mut closed) => {}
+                    _ = kill_rx.recv() => {}
+                }
+            }
+        }
+        exited_tx.send_replace(true);
+        c2.close();
+    });
+    Arc::new(Chrome {
+        conn,
+        exited,
+        kill,
+        obscura: true,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures_util::{SinkExt, StreamExt};
+    use tokio::net::TcpListener;
+    use tokio_tungstenite::tungstenite::Message;
+
+    /// A tiny CDP server: answers every command with `{"echo": method}`, and sends one event first.
+    async fn serve_ws() -> String {
+        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((s, _)) = l.accept().await {
+                tokio::spawn(async move {
+                    let Ok(mut ws) = tokio_tungstenite::accept_async(s).await else {
+                        return;
+                    };
+                    let ev = json!({"method": "Target.targetCreated", "params": {"n": 1}});
+                    let _ = ws.send(Message::text(ev.to_string())).await;
+                    while let Some(Ok(Message::Text(t))) = ws.next().await {
+                        let v: Value = serde_json::from_str(t.as_str()).unwrap();
+                        if v["method"] == "Test.hang" {
+                            continue; // never answers
+                        }
+                        let r = json!({"id": v["id"], "result": {"echo": v["method"]}});
+                        let _ = ws.send(Message::text(r.to_string())).await;
+                    }
+                });
+            }
+        });
+        format!("ws://{addr}")
+    }
+
+    #[tokio::test]
+    async fn ws_transport_calls_and_events() {
+        let url = serve_ws().await;
+        let conn = Conn::over_ws(&url).await.unwrap();
+        let mut ev = conn.subscribe(None);
+        let r = conn.call(None, "Browser.ping", json!({})).await.unwrap();
+        assert_eq!(r["echo"], "Browser.ping");
+        // a command nobody answers is bounded by its timeout, not hung
+        let r = conn
+            .call_with(
+                None,
+                "Test.hang",
+                json!({}),
+                Some(Duration::from_millis(100)),
+                None,
+            )
+            .await;
+        assert_eq!(r, Err(CdpError::Timeout));
+        let e = tokio::time::timeout(Duration::from_secs(2), ev.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(e.method, "Target.targetCreated");
+        assert!(!conn.is_closed());
+    }
+
+    #[tokio::test]
+    async fn unsupported_commands_fail_fast_and_dead_server_closes() {
+        let url = serve_ws().await;
+        let conn = Conn::over_ws_with(&url, OBSCURA_UNSUPPORTED).await.unwrap();
+        let r = conn.call(None, "Log.enable", json!({})).await;
+        match r {
+            Err(CdpError::Remote { code, message }) => {
+                assert_eq!(code, -32601);
+                assert!(message.contains("Log.enable"), "{message}");
+            }
+            o => panic!("{o:?}"),
+        }
+        // supported ones still go through
+        assert!(conn.call(None, "Page.enable", json!({})).await.is_ok());
+        assert!(Conn::over_ws("ws://127.0.0.1:1").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn discovers_ws_url_from_json_version() {
+        // a one-shot HTTP server
+        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = l.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((mut s, _)) = l.accept().await {
+                let mut buf = [0u8; 1024];
+                let _ = tokio::io::AsyncReadExt::read(&mut s, &mut buf).await;
+                let body = format!(
+                    r#"{{"webSocketDebuggerUrl":"ws://127.0.0.1:{port}/devtools/browser"}}"#
+                );
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = s.write_all(resp.as_bytes()).await;
+            }
+        });
+        let u = discover_ws_url(&format!("http://127.0.0.1:{port}"))
+            .await
+            .unwrap();
+        assert_eq!(u, format!("ws://127.0.0.1:{port}/devtools/browser"));
+        assert_eq!(discover_ws_url("ws://x:1/y").await.unwrap(), "ws://x:1/y");
+        assert!(discover_ws_url("http://127.0.0.1:1").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn cdp_url_launch_without_a_process() {
+        let url = serve_ws().await;
+        let c = launch(LaunchSpec {
+            exec_path: String::new(),
+            flags: Flags::default(),
+            obscura: true,
+            cdp_url: url,
+            debug_port: false,
+        })
+        .await
+        .unwrap();
+        assert!(c.obscura && !c.is_dead());
+        c.kill();
+        tokio::time::timeout(Duration::from_secs(2), c.wait_exit())
+            .await
+            .unwrap();
+        assert!(c.is_dead());
+    }
+
+    #[tokio::test]
+    async fn missing_obscura_binary_says_how_to_install() {
+        let e = launch(LaunchSpec {
+            exec_path: "/nonexistent/obscura".into(),
+            flags: Flags::default(),
+            obscura: true,
+            cdp_url: String::new(),
+            debug_port: false,
+        })
+        .await
+        .err()
+        .unwrap();
+        assert!(e.contains("releases"), "{e}");
+    }
 }

@@ -14,7 +14,27 @@ pub struct Engine {
     pub path: String,
     /// chrome-headless-shell: always headless, takes no --headless flag
     pub shell: bool,
+    /// obscura only: connect to an already running CDP endpoint (`ws://…` or `http://host:port`)
+    /// instead of starting the binary at `path`
+    pub cdp_url: String,
 }
+
+impl Engine {
+    /// Obscura is a CDP server, not a Chromium: no pipe, no Chrome flags, a subset of the protocol.
+    pub fn is_obscura(&self) -> bool {
+        self.name == "obscura"
+    }
+}
+
+/// What Obscura cannot do (as far as this program uses the protocol). Printed once at startup.
+pub const OBSCURA_NOTICE: &str =
+    "Obscura engine: not supported (these commands fail with a clear error, \
+the rest keeps working): touch/locale/timezone/geolocation emulation, permissions, download \
+behaviour, the Log domain, the Inspect (DevTools) viewer, a Chrome user agent with client hints. \
+Screencast, input and navigation use Obscura's own CDP and may differ from Chrome.";
+
+pub const OBSCURA_INSTALL: &str = "Obscura not found: download it from https://github.com/h4ckf0r0day/obscura/releases \
+and put `obscura` on PATH, pass -chrome <path to obscura>, or connect to a running one with -cdp-url ws://127.0.0.1:9222";
 
 /// engineOrder is what "auto" tries, in order: Chromium first, then whatever else is installed.
 pub const ENGINE_ORDER: [&str; 6] = [
@@ -34,6 +54,7 @@ fn engine_label(name: &str) -> Option<&'static str> {
         "edge" => "Microsoft Edge",
         "vivaldi" => "Vivaldi",
         "headless-shell" => "chrome-headless-shell",
+        "obscura" => "Obscura",
         _ => return None,
     })
 }
@@ -91,6 +112,11 @@ fn engine_locations(name: &str) -> Vec<String> {
             "windows" => win(r"Vivaldi\Application\vivaldi.exe"),
             _ => s(&["vivaldi", "vivaldi-stable"]),
         },
+        "obscura" => s(&[if os == "windows" {
+            "obscura.exe"
+        } else {
+            "obscura"
+        }]),
         "headless-shell" => {
             let mut l = s(&["chrome-headless-shell", "headless_shell", "headless-shell"]);
             // Where `npx @puppeteer/browsers install chrome-headless-shell@stable` puts it.
@@ -199,6 +225,33 @@ fn find_engine(name: &str) -> String {
     String::new()
 }
 
+/// `-cdp-url`: talk to a CDP server that is already running (Obscura). It needs no binary, and
+/// only goes with `-engine obscura` (or auto).
+pub fn resolve_cdp_url(name: &str, url: &str) -> Result<Engine, String> {
+    let name = name.trim().to_lowercase();
+    if !matches!(name.as_str(), "" | "auto" | "obscura") {
+        return Err(format!(
+            "-cdp-url only works with -engine obscura (got {name:?})"
+        ));
+    }
+    let u = url.trim();
+    let ok = ["ws://", "wss://", "http://", "https://"]
+        .iter()
+        .any(|p| u.len() > p.len() && u.starts_with(p));
+    if !ok {
+        return Err(format!(
+            "-cdp-url {u:?} is not a ws:// or http:// address (for example ws://127.0.0.1:9222)"
+        ));
+    }
+    Ok(Engine {
+        name: "obscura".into(),
+        label: "Obscura".into(),
+        path: String::new(),
+        shell: false,
+        cdp_url: u.to_string(),
+    })
+}
+
 /// resolveEngine turns the -engine and -chrome flags into a browser to start.
 pub fn resolve_engine(name: &str, path: &str) -> Result<Engine, String> {
     let mut name = name.trim().to_lowercase();
@@ -231,12 +284,16 @@ pub fn resolve_engine(name: &str, path: &str) -> Result<Engine, String> {
             if base.contains("msedge") {
                 name = "edge".into();
             }
+            if base.contains("obscura") {
+                name = "obscura".into();
+            }
         }
         return Ok(Engine {
             label: engine_label(&name).unwrap_or("").to_string(),
             shell: name == "headless-shell",
             name,
             path: path.to_string(),
+            cdp_url: String::new(),
         });
     }
     let names: Vec<String> = if name == "auto" {
@@ -257,8 +314,12 @@ pub fn resolve_engine(name: &str, path: &str) -> Result<Engine, String> {
                 label: engine_label(n).unwrap_or("").to_string(),
                 path: p,
                 shell: n == "headless-shell",
+                cdp_url: String::new(),
             });
         }
+    }
+    if name == "obscura" {
+        return Err(OBSCURA_INSTALL.into());
     }
     if name == "headless-shell" {
         return Err("chrome-headless-shell not found: install it with `npx @puppeteer/browsers install chrome-headless-shell@stable` or pass -chrome <path>".into());
@@ -292,6 +353,37 @@ mod tests {
             resolve_engine("auto", "/usr/bin/foo").unwrap().name,
             "chrome"
         );
+    }
+
+    #[test]
+    fn obscura_engine() {
+        let e = resolve_engine("obscura", "/opt/bin/obscura").unwrap();
+        assert!(e.is_obscura() && e.label == "Obscura" && e.cdp_url.is_empty());
+        // an explicit path is guessed from its name
+        assert_eq!(
+            resolve_engine("auto", "/opt/obscura-x86_64/obscura")
+                .unwrap()
+                .name,
+            "obscura"
+        );
+        // a missing binary says how to install it (skipped when one really is installed)
+        if look_path("obscura").is_none() {
+            let e = resolve_engine("obscura", "").unwrap_err();
+            assert!(e.contains("releases") && e.contains("-cdp-url"), "{e}");
+        }
+        // auto never picks Obscura
+        assert!(!ENGINE_ORDER.contains(&"obscura"));
+        assert!(!Engine::default().is_obscura());
+    }
+
+    #[test]
+    fn cdp_url_selects_obscura() {
+        let e = resolve_cdp_url("auto", " ws://127.0.0.1:9222 ").unwrap();
+        assert!(e.is_obscura() && e.cdp_url == "ws://127.0.0.1:9222" && e.path.is_empty());
+        assert!(resolve_cdp_url("obscura", "http://h:1").is_ok());
+        assert!(resolve_cdp_url("chrome", "ws://h:1").is_err());
+        assert!(resolve_cdp_url("auto", "127.0.0.1:9222").is_err());
+        assert!(resolve_cdp_url("auto", "ws://").is_err());
     }
 
     #[test]

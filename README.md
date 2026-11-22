@@ -100,8 +100,9 @@ From source, use `make`:
 | `-port`, `-p` | `3000` | HTTP port |
 | `-pw` | none | Password for the web UI and `/mcp` (or env `AGENT_BROWSER_USE_PASSWORD`) |
 | `-home` | `log` (current folder) | The one folder where everything is stored (see below; or env `AGENT_BROWSER_USE_HOME`) |
-| `-engine` | `auto` | `chromium`, `chrome`, `edge`, `brave`, `vivaldi`, `headless-shell` (lightest) |
+| `-engine` | `auto` | `chromium`, `chrome`, `edge`, `brave`, `vivaldi`, `headless-shell` (lightest), `obscura` (experimental, never chosen by `auto`) |
 | `-chrome` | auto-detect | Path to the browser executable |
+| `-cdp-url` | none | Connect to an already running [Obscura](https://github.com/h4ckf0r0day/obscura) (`ws://127.0.0.1:9222`) instead of starting a browser |
 | `-width`, `-height` | `1280`, `720` | Shared screen size |
 | `-quality` | `92` | Image quality 10-100 (lower = less bandwidth) |
 | `-max-tabs` | `12` | Maximum open tabs |

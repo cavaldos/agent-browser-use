@@ -61,7 +61,7 @@ Examples:
   make run p=8080
   ./run -h
   ./run --help
-  ./bin/agent-browser-use -h      # all Go app flags
+  ./bin/agent-browser-use -h      # all app flags
 EOF
 }
 
@@ -90,7 +90,10 @@ for arg in "$@"; do
     prev="$arg"
 done
 
-cd "$ROOT/app"
+# Built fresh on each run (cargo is incremental, so this is fast when nothing changed).
+"$ROOT/scripts/build.sh" >&2
+RUN_CMD="$ROOT/bin/agent-browser-use"
+cd "$ROOT"
 
 pids_on_port() {
     if command -v lsof >/dev/null 2>&1; then
@@ -247,7 +250,7 @@ done
 # Start the app detached from the terminal; output goes to the log.
 start_app() {
     : >"$log"
-    AGENT_BROWSER_USE_NO_MENU=1 nohup go run . -home "$DATA_HOME" "$@" >"$log" 2>&1 </dev/null &
+    AGENT_BROWSER_USE_NO_MENU=1 nohup $RUN_CMD -home "$DATA_HOME" "$@" >"$log" 2>&1 </dev/null &
     app_pid=$!
 }
 
@@ -341,5 +344,5 @@ if interactive; then
     wait_ready || exit 1
     choose_with_arrows "$@"
 else
-    exec go run . -home "$DATA_HOME" "$@"
+    exec $RUN_CMD -home "$DATA_HOME" "$@"
 fi

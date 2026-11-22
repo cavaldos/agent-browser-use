@@ -10,7 +10,7 @@ make docker-logs     # logs
 make docker-stop     # stop
 ```
 
-## From source (Go 1.22+ and Chrome/Chromium)
+## From source (Rust stable (rustup) and Chrome/Chromium)
 
 ```sh
 make run             # starts the server on port 3000

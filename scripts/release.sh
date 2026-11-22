@@ -1,7 +1,7 @@
 #!/bin/sh
 # Cut a release: scripts/release.sh v1.2.3 [-y] [--dry-run]
 #
-# Checks the tree, runs vet and tests, creates an annotated tag vX.Y.Z on the current
+# Checks the tree, runs fmt, clippy and tests, creates an annotated tag vX.Y.Z on the current
 # commit and pushes it. The tag push starts .github/workflows/release.yml, which builds
 # the binaries and publishes the GitHub Release.
 set -e
@@ -35,8 +35,8 @@ git fetch --quiet origin main --tags
 [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] \
     || die "HEAD is not origin/main; push or pull first"
 
-echo "Running vet and tests..."
-(cd app && go vet ./... && go test ./...)
+echo "Running fmt, clippy and tests..."
+(cd app && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test)
 
 COMMIT=$(git rev-parse --short HEAD)
 echo "Release $VERSION from $COMMIT"

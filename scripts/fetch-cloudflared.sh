@@ -1,10 +1,13 @@
 #!/bin/sh
 # Download cloudflared for the platform you build for into app/cloudflared/, so that
-# `go build` embeds it in the binary. Usage: scripts/fetch-cloudflared.sh [GOOS GOARCH]
+# `cargo build` embeds it in the binary. Usage: scripts/fetch-cloudflared.sh [OS ARCH]
+# OS: darwin|linux|windows, ARCH: amd64|arm64 (default: this machine).
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-OS=${1:-$(go env GOOS)}
-ARCH=${2:-$(go env GOARCH)}
+case "$(uname -s)" in Darwin) HOST_OS=darwin ;; Linux) HOST_OS=linux ;; MINGW*|MSYS*|CYGWIN*) HOST_OS=windows ;; *) HOST_OS=$(uname -s | tr A-Z a-z) ;; esac
+case "$(uname -m)" in x86_64|amd64) HOST_ARCH=amd64 ;; arm64|aarch64) HOST_ARCH=arm64 ;; *) HOST_ARCH=$(uname -m) ;; esac
+OS=${1:-$HOST_OS}
+ARCH=${2:-$HOST_ARCH}
 DEST="$ROOT/app/cloudflared"
 BASE=https://github.com/cloudflare/cloudflared/releases/latest/download
 mkdir -p "$DEST"

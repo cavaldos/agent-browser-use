@@ -1,0 +1,2 @@
+agent-browser-use dev
+exit=0

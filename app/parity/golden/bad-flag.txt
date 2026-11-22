@@ -1,0 +1,71 @@
+invalid value "abc" for flag -port: parse error
+Usage:
+  agent-browser-use [flags]       web UI + MCP over HTTP at /mcp
+  agent-browser-use mcp [flags]   MCP over stdio (also serves the web UI)
+
+Flags:
+  -agent-idle duration
+    	give control back (to whoever had it before) after the agent has been idle this long (0 = never) (default 15s)
+  -agent-speed float
+    	pace of the AI agent's cursor and typing, for people who want to follow it: 0 instant, 1 normal, 2 slower
+  -chrome string
+    	path to the browser executable (empty = auto-detect)
+  -data string
+    	file to keep the chat history in across restarts (empty = memory only)
+  -downloads string
+    	folder for downloaded files (empty = "downloads" next to the profile folder)
+  -engine string
+    	browser to run: chromium, chrome, edge, brave, vivaldi, headless-shell (lightest); auto = Chromium, else the first one installed (default "auto")
+  -flows string
+    	folder for recorded flows (empty = "flows" next to the profile folder)
+  -height int
+    	shared screen height (default 720)
+  -home string
+    	one folder for everything the app stores: browser profile, downloads, uploads, states, flows, warp.json, log (empty = "log" in the current folder; ~/.agent-browser-use for the mcp command)
+  -max-tabs int
+    	maximum number of open tabs (default 12)
+  -mcp-remote
+    	allow /mcp from other machines (default: this machine only)
+  -no-audio
+    	disable shared browser audio
+  -no-browser
+    	disable the shared browser
+  -no-devtools
+    	do not open Chrome's local debugging port (turns off Inspect in the viewer)
+  -no-mcp
+    	disable the MCP endpoint /mcp
+  -open
+    	open the web UI in your browser when the agent starts and nobody is watching (default true)
+  -p int
+    	HTTP port (short for -port) (default 3000)
+  -port int
+    	HTTP port (default 3000)
+  -profile string
+    	folder for the shared browser's cookies/logins (empty = "chrome-profile" inside the home folder)
+  -proxy string
+    	upstream SOCKS5 proxy for the shared browser only, e.g. socks5://127.0.0.1:40000 (empty = built-in Cloudflare WARP); the header switch turns it on/off
+  -pw string
+    	password needed to open the web UI and use /mcp (empty = no password)
+  -quality int
+    	image quality 10-100 (lower = less bandwidth) (default 92)
+  -start string
+    	page for new tabs (default "https://www.google.com")
+  -states string
+    	folder for saved logins/sessions (empty = "states" next to the profile folder)
+  -subdomain string
+    	with -tunnel: name for the public URL (empty = random)
+  -tunnel
+    	share the web UI on a public https URL (built-in Cloudflare tunnel, no router setup); sets a password if you gave none
+  -tunnel-backend string
+    	with -tunnel: tunnel backend URL (empty = https://api.nport.link)
+  -u	update to the latest release (short for -update)
+  -update
+    	update this program to the latest release and exit
+  -uploads string
+    	folder the agent may upload files from (empty = "uploads" next to the profile folder)
+  -v	print the version and exit (short for -version)
+  -version
+    	print the version and exit
+  -width int
+    	shared screen width (default 1280)
+exit=2

@@ -1,6 +1,6 @@
 // =====================================================================
 // INSPECT: Chrome DevTools for the tab on screen, docked under the shared screen.
-// The front end is Chrome's own, served through this server (see devtools.go), so it works
+// The front end is Chrome's own, served through this server (see app/src/devtools.rs), so it works
 // behind the room's password and through the public link too.
 // =====================================================================
 let devOn = false, devFor = "";

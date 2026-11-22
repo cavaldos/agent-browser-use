@@ -5,7 +5,7 @@
 #   scripts/test-release.sh --quick  # only check URLs, workflow syntax and the host build
 #
 # Steps (the same ones release.yml runs, in the same order):
-#   1. vet + tests            2. cloudflared exists for every target
+#   1. fmt + clippy + tests            2. cloudflared exists for every target
 #   3. build-release.sh       4. every artifact exists, host binary runs --version
 #   5. install.sh downloads the host binary from a local HTTP server and runs it
 set -e
@@ -24,13 +24,18 @@ trap cleanup EXIT
 
 TARGETS=$(sed -n 's/^TARGETS=\${TARGETS:-"\(.*\)"}$/\1/p' scripts/build-release.sh)
 [ -n "$TARGETS" ] || fail "could not read TARGETS from scripts/build-release.sh"
-[ -z "$QUICK" ] || TARGETS="$(go env GOOS)/$(go env GOARCH)"
-HOST_OS=$(go env GOOS); HOST_ARCH=$(go env GOARCH)
+case "$(uname -s)" in Darwin) HOST_OS=darwin ;; Linux) HOST_OS=linux ;; *) HOST_OS=windows ;; esac
+case "$(uname -m)" in x86_64|amd64) HOST_ARCH=amd64 ;; *) HOST_ARCH=arm64 ;; esac
+[ -z "$QUICK" ] || TARGETS="$HOST_OS/$HOST_ARCH"
+# Only targets for this OS can be built here (the release workflow builds each OS on its own runner).
+HOST_TARGETS=
+for t in $TARGETS; do [ "${t%/*}" = "$HOST_OS" ] && HOST_TARGETS="$HOST_TARGETS $t"; done
+TARGETS=${HOST_TARGETS# }
 VERSION=v0.0.0-localtest
 
-step "1. vet and tests"
-(cd app && go vet ./... && go test ./...) || fail "go vet/test"
-pass "go vet ./... && go test ./..."
+step "1. fmt, clippy and tests"
+(cd app && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test) || fail "cargo fmt/clippy/test"
+pass "cargo fmt --check && cargo clippy && cargo test"
 
 step "2. scripts and workflow"
 for f in scripts/build.sh scripts/build-release.sh scripts/fetch-cloudflared.sh scripts/install.sh scripts/release.sh; do
@@ -70,7 +75,7 @@ for t in $TARGETS; do
     [ -s "$DIST/agent-browser-use-$os-$arch$ext" ] || fail "missing agent-browser-use-$os-$arch$ext"
     pass "agent-browser-use-$os-$arch$ext"
 done
-stray=$(find app -path app/cloudflared -prune -o -type f -name 'agent-browser-use-*' -newer "$TMP/marker" -print 2>/dev/null)
+stray=$(find app -path app/cloudflared -prune -o -path app/target -prune -o -type f -name 'agent-browser-use-*' -newer "$TMP/marker" -print 2>/dev/null)
 [ -z "$stray" ] || fail "a build wrote inside app/ (relative OUT?): $stray"
 HOST_BIN="$DIST/agent-browser-use-$HOST_OS-$HOST_ARCH"
 out=$("$HOST_BIN" -version 2>&1) || fail "host binary does not run"

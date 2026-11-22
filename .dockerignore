@@ -1,8 +1,14 @@
 .git
 bin/
+dist/
 docs/
-scripts/
+scripts/*
+!scripts/fetch-cloudflared.sh
 data.json
 chrome-profile/
 Makefile
 log/
+# Rust build output and the host's cloudflared (the image fetches its own for linux)
+app/target/
+app/cloudflared/
+app/parity/

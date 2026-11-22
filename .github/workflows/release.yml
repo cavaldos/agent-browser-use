@@ -3,37 +3,78 @@ name: Release
 # Runs when a tag vX.Y.Z is pushed (see scripts/release.sh).
 # Publishes raw binaries named agent-browser-use-<os>-<arch>[.exe], the same layout
 # as pitago, so scripts/install.sh can download them from releases/latest/download.
+# Each OS builds on its own native runner (no cross-OS builds); the target lists match
+# TARGETS in scripts/build-release.sh.
 on:
   push:
     tags: ['v*']
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
+  build:
+    name: Build ${{ matrix.targets }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # Linux on 22.04 so the binaries run on older glibc.
+          - { runner: ubuntu-22.04,     targets: "linux/amd64" }
+          - { runner: ubuntu-22.04-arm, targets: "linux/arm64" }
+          # Apple Silicon runner builds both mac targets.
+          - { runner: macos-latest,     targets: "darwin/arm64 darwin/amd64" }
+          - { runner: windows-latest,   targets: "windows/amd64" }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app
+          key: ${{ matrix.targets }}
+
+      - name: Test
+        # Host-native tests; the formatting and clippy gate lives in ci.yml and scripts/release.sh.
+        run: cargo test --manifest-path app/Cargo.toml
+
+      - name: Build binaries
+        env:
+          VERSION: ${{ github.ref_name }}
+          TARGETS: ${{ matrix.targets }}
+        # Same script scripts/test-release.sh runs locally.
+        run: scripts/build-release.sh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.runner }}
+          path: dist/agent-browser-use-*
+          if-no-files-found: error
+
+  publish:
+    needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/download-artifact@v4
         with:
-          go-version-file: app/go.mod
-          cache-dependency-path: app/go.sum
-
-      - name: Test
-        run: cd app && go vet ./... && go test ./...
-
-      - name: Build binaries
-        env:
-          VERSION: ${{ github.ref_name }}
-        # Same script scripts/test-release.sh runs locally; the target list lives in it.
-        run: scripts/build-release.sh dist
+          path: dist
+          pattern: dist-*
+          merge-multiple: true
 
       - name: Publish GitHub Release
         run: |
+          ls -la dist
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" dist/agent-browser-use-* --clobber
           else

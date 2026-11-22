@@ -1,0 +1,75 @@
+{
+  "alice": [
+    {
+      "active": "<tab-id>",
+      "agents": [
+        "parity#<hex4>"
+      ],
+      "enabled": true,
+      "tabs": [
+        {
+          "id": "<tab-id>"
+        }
+      ],
+      "type": "init",
+      "users": [
+        {
+          "color": "<color>",
+          "id": "<id>",
+          "name": "Alice"
+        }
+      ],
+      "view": {
+        "height": 720,
+        "quality": 92,
+        "width": 1280
+      },
+      "you": {
+        "color": "<color>",
+        "id": "<id>",
+        "name": "Alice"
+      }
+    },
+    {
+      "type": "user_join",
+      "user": {
+        "color": "<color>",
+        "id": "<id>",
+        "name": "Bob"
+      }
+    },
+    {
+      "msg": {
+        "color": "<color>",
+        "text": "hello",
+        "time": 0,
+        "user": "Alice"
+      },
+      "type": "chat"
+    },
+    {
+      "text": "👍",
+      "type": "emote",
+      "user": {
+        "color": "<color>",
+        "id": "<id>",
+        "name": "Alice"
+      }
+    },
+    {
+      "ctrl": {
+        "color": "<color>",
+        "id": "<id>",
+        "name": "Alice"
+      },
+      "type": "control"
+    },
+    {
+      "id": "<id>",
+      "type": "user_leave"
+    }
+  ],
+  "binary_packet_kinds": [
+    1
+  ]
+}

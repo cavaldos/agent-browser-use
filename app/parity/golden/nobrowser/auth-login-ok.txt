@@ -1,0 +1,3 @@
+HTTP/1.1 303 See Other
+Location: /x
+Set-Cookie: abu_auth=<token>; Path=/; Max-Age=<n>; HttpOnly; SameSite=Lax

@@ -5,7 +5,7 @@ Let AI agents (Claude Code, Claude Desktop, Cursor, VS Code…) use a real brows
 The agent's cursor glides to each element, the element gets outlined with a caption, clicks show a ripple, text is typed
 key by key, and every step is logged in the chat.
 
-It is a single Go binary. You don't need Docker, an X server or a video encoder. One headless Chrome runs on your machine,
+It is a single native binary (Rust). You don't need Docker, an X server or a video encoder. One headless Chrome runs on your machine,
 driven over the DevTools Protocol and streamed to the web viewer.
 
 ## What you see while the agent works
@@ -24,7 +24,7 @@ The agent can also talk to you with the `browser_say` tool, for example "Please 
 
 ## Install
 
-Requires Go 1.22+ and Google Chrome.
+Requires a Rust toolchain (rustup, stable) and Google Chrome.
 
     make build        # -> bin/agent-browser-use
     make run          # run from source
@@ -204,17 +204,17 @@ printed at startup). They hear the page's audio, chat, send emoji reactions, and
 |---|---|
 | Video | The active tab sends a JPEG frame whenever it changes (screencast) → WebSocket → `<canvas>` |
 | Audio | A script injected into each page taps `<audio>`/`<video>`/Web Audio and sends PCM → WebSocket → Web Audio API |
-| Agent | MCP (JSON-RPC over stdio or HTTP) → `agent.go` sends real mouse/keyboard events through DevTools to the active tab. `agent.js` runs in the page to build snapshots and locate elements. Every step is broadcast to viewers (cursor, outline, caption, log) |
+| Agent | MCP (JSON-RPC over stdio or HTTP) → `agent.rs` sends real mouse/keyboard events through DevTools to the active tab. `agent.js` runs in the page to build snapshots and locate elements. Every step is broadcast to viewers (cursor, outline, caption, log) |
 | Control | The agent takes control when it acts and gives it back to the person it took it from after being idle (`-agent-idle`). While someone has clicked **Block agent**, it can't take control and is told so |
 
 | File | |
 |---|---|
-| `app/main.go` | Web server, the room (viewers, chat, control), startup |
-| `app/browser.go` | Headless Chrome: tabs, screencast, audio, people's mouse/keyboard |
-| `app/agent.go` | The agent's actions and what viewers see of them |
+| `app/src/main.rs` | Web server, the room (viewers, chat, control), startup |
+| `app/src/browser/browser.rs` | Headless Chrome: tabs, screencast, audio, people's mouse/keyboard |
+| `app/src/agent/agent.rs` | The agent's actions and what viewers see of them |
 | `app/agent.js` | Runs in the page: snapshot, `ref`s, element positions |
-| `app/frames.go` | Cross-origin iframes: frame tree, isolated worlds, `f<N>` refs |
-| `app/mcp.go` | MCP protocol, tool list, stdio/HTTP transports |
+| `app/src/browser/frames.rs` | Cross-origin iframes: frame tree, isolated worlds, `f<N>` refs |
+| `app/src/agent/mcp.rs` | MCP protocol, tool list, stdio/HTTP transports |
 | `app/static/` | Web UI |
 
 ## Cross-origin iframes

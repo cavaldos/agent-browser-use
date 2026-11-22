@@ -1,7 +1,7 @@
 // =====================================================================
 // ASSETS: what the browser produced while people and agents worked: screenshots, text copied in
 // the shared browser, elements picked with the Pick tool, downloaded files. They are kept on the
-// server (see assets.go) and listed in the sidebar's Assets tab, newest first.
+// server (see app/src/assets.rs) and listed in the sidebar's Assets tab, newest first.
 // =====================================================================
 let assets = [], assetFilter = "all", assetSeq = 0, assetNew = 0;
 const freshAssets = new Set(); // ids that arrived while the tab was open: they flash once

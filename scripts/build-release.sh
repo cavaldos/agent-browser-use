@@ -12,7 +12,7 @@ DIST=${1:-$ROOT/dist}
 TARGETS=${TARGETS:-"darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64"}
 
 mkdir -p "$DIST"
-DIST=$(cd "$DIST" && pwd)   # absolute: build.sh runs go build inside app/
+DIST=$(cd "$DIST" && pwd)   # absolute: build.sh runs cargo from the repo
 
 for target in $TARGETS; do
     os=${target%/*}; arch=${target#*/}
@@ -20,7 +20,17 @@ for target in $TARGETS; do
     out="$DIST/agent-browser-use-$os-$arch$ext"
     # Embed cloudflared for the target so -tunnel works in the released binary.
     "$ROOT/scripts/fetch-cloudflared.sh" "$os" "$arch"
-    GOOS=$os GOARCH=$arch VERSION=$VERSION OUT=$out "$ROOT/scripts/build.sh"
+    case "$os/$arch" in
+        darwin/arm64)  triple=aarch64-apple-darwin ;;
+        darwin/amd64)  triple=x86_64-apple-darwin ;;
+        linux/amd64)   triple=x86_64-unknown-linux-gnu ;;
+        linux/arm64)   triple=aarch64-unknown-linux-gnu ;;
+        windows/amd64) triple=x86_64-pc-windows-msvc ;;
+        *) echo "error: unsupported target $os/$arch" >&2; exit 1 ;;
+    esac
+    # Cross-OS builds are not supported: run each target on a runner for its OS (see release.yml).
+    command -v rustup >/dev/null 2>&1 && rustup target add "$triple" >/dev/null
+    TARGET_TRIPLE=$triple VERSION=$VERSION OUT=$out "$ROOT/scripts/build.sh"
     # Fail here instead of publishing an empty release.
     [ -s "$out" ] || { echo "error: $out was not produced" >&2; exit 1; }
 done

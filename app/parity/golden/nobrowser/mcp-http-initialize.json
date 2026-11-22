@@ -1,0 +1,18 @@
+{
+  "id": 1,
+  "jsonrpc": "2.0",
+  "result": {
+    "capabilities": {
+      "tools": {
+        "listChanged": false
+      }
+    },
+    "instructions": "This browser is watched live by people in a web UI: they see your cursor, the element you act on, and a caption for every step.\nWork like Playwright MCP: call browser_snapshot to get the page outline, then act on elements by their ref (e.g. ref \"e12\"). Action tools return a fresh snapshot.\nTo react to the page (the other player's move in a game, a chat reply, a result appearing), call browser_wait_for_change: it returns as soon as the page changes, with what changed.\nUse browser_say to tell the people watching what you are doing or what you need from them (for example, to log in for you).\nYou take control by yourself when you act, even from a person, and give it back after you have been idle a little while.\nAfter an action, the result lists new console errors and failed requests (\"Page problems\"). Dig deeper with browser_console_messages and browser_network_requests.\nFiles: browser_downloads waits for/reads downloaded files; browser_file_upload fills file inputs (from the upload folder only).\nLogins: browser_cookies, browser_storage and browser_state (save/load a whole session by name, or export/import sessions as a JSON file to move them between machines). browser_snapshot_diff shows what changed on the page. browser_emulate switches to a phone/tablet or changes locale, dark mode, location and network speed.\nPeople can chat with you from the viewer: when idle, call browser_read_chat (time: 60) to wait for messages written to you with @<your name> or @agent, and answer with browser_say.\nMulti-agent: to run sub-agents in parallel, call browser_tabs {action:\"new\", background:true, url} once per sub-agent and give each its tabId. A sub-agent passes tabId on every browser_* call; it then has its own cursor, refs and snapshots, and never touches other tabs. Calls on different tabs run concurrently, calls on the same tab run in order. Sub-agents may also share a tab: give each a distinct \"agent\" name; to run a multi-step sequence that depends on page state (pick a tool, then draw), wrap it in browser_lock_tab / browser_unlock_tab.\nRecorded flows: when a person's message contains an id like flow-3fa9c1 (often nothing else), it names a flow they recorded in the viewer. Look it up with browser_get_flow {flowId}, then do what they ask with it: replay it with browser_run_flow (repeat, inputs to change typed text), or follow its steps yourself to adapt them. With only the id and no other request, replay it once.\nIf a tool says the agent is blocked, a person clicked \"Block agent\": wait, or ask them (browser_say) to click \"Unblock\".\n\nNote: the shared browser is disabled on this server (started with -no-browser): every browser tool will return an error.",
+    "protocolVersion": "2025-06-18",
+    "serverInfo": {
+      "name": "agent-browser-use",
+      "title": "Agent Browser Use",
+      "version": "1.0.0"
+    }
+  }
+}

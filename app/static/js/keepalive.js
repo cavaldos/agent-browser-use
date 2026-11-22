@@ -33,3 +33,12 @@ $("#kaSwitch").onclick = () => {
 };
 kaCall();
 setInterval(kaCall, 15000);
+
+// Engine tag in the header: which browser runs the shared screen.
+fetch("/api/engine").then((r) => r.ok && r.json()).then((e) => {
+  if (!e) return;
+  const t = $("#engineTag");
+  t.textContent = e.label;
+  t.title = "Browser engine: " + e.label + " (server: " + e.server + ")";
+  t.hidden = false;
+}).catch(() => {});

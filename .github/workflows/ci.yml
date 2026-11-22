@@ -24,26 +24,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          go-version-file: app/go.mod
-          cache-dependency-path: app/go.sum
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app
 
       - name: Check formatting
-        run: |
-          unformatted=$(cd app && gofmt -l .)
-          if [ -n "$unformatted" ]; then
-            echo "Not gofmt-ed:"; echo "$unformatted"; exit 1
-          fi
+        run: cargo fmt --manifest-path app/Cargo.toml --check
 
-      - name: Vet
-        run: cd app && go vet ./...
+      - name: Clippy
+        run: cargo clippy --manifest-path app/Cargo.toml --all-targets -- -D warnings
 
       - name: Test
-        run: cd app && go test -race ./...
+        run: cargo test --manifest-path app/Cargo.toml
 
       - name: Build
         run: scripts/build.sh
 
       - name: Smoke test the binary
-        run: ./bin/agent-browser-use -version
+        run: |
+          ./bin/agent-browser-use -version
+          ./bin/agent-browser-use -h

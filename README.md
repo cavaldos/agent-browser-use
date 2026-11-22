@@ -2,7 +2,7 @@
 
 **Let AI coding agents drive a real browser over MCP, while you watch every step live in a web page and can take over at any time.**
 
-Agent Browser Use is a single Go binary that runs one headless Chrome on your machine and exposes it as a set of
+Agent Browser Use is a single native binary (Rust) that runs one headless Chrome on your machine and exposes it as a set of
 [Model Context Protocol](https://modelcontextprotocol.io) tools in the style of Playwright MCP. Any MCP-capable agent
 (Claude Code, Codex, OpenCode, Pi, Cursor, VS Code…) can navigate, read the page, click, type and log in for you, while
 a web viewer shows the agent's cursor, the element it is acting on, and a log of every step.
@@ -54,7 +54,7 @@ https://github.com/user-attachments/assets/19edb4dd-3e3f-45e3-8809-b27a6c31be58
 
 ## Quick start
 
-1. Download the project and start the server (requires Go 1.22+ and Chrome/Chromium, or just Docker):
+1. Download the project and start the server (requires a Rust toolchain and Chrome/Chromium, or just Docker):
 
    ```sh
    git clone https://github.com/cavaldos/agent-browser-use.git
@@ -310,7 +310,7 @@ See [docs/GUIDE.md](docs/GUIDE.md) for the full tool reference, options, the sha
 ## Project layout
 
 ```
-app/        Go source (MCP server, browser control, agent, web UI in static/)
+app/        Rust crate (MCP server, browser control, agent, web UI in static/)
 docker/     Dockerfile and entrypoint
 scripts/    run / build / docker scripts
 docs/       full guide and images

@@ -1,0 +1,11 @@
+{
+  "canToggle": true,
+  "checking": "<bool>",
+  "configured": false,
+  "error": "",
+  "ip": "<ip>",
+  "loc": "<loc>",
+  "on": false,
+  "warp": "on",
+  "warpError": ""
+}

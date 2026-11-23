@@ -7,7 +7,7 @@
 #sidebar .side-tab.active { background: var(--accent) !important; color: #fff; box-shadow: none; }
 #sidebar .label, .label { color: var(--dim) !important; font-size: 10px; letter-spacing: .1em; }
 #sidebar section > div.rounded-xl { background: var(--panel) !important; border-color: var(--line-soft) !important; }
-#sidebar .pop, #membersPop, #helpPop, #emotePop { border-radius: 10px !important; background: var(--panel) !important; border-color: var(--line) !important; box-shadow: 0 12px 40px var(--shadow) !important; }
+#sidebar .pop, #membersPop, #helpPop, #emotePop, #resPop { border-radius: 10px !important; background: var(--panel) !important; border-color: var(--line) !important; box-shadow: 0 12px 40px var(--shadow) !important; }
 #sidebar input:not(.toggle):not(.range), #sidebar select, #chatInput { border-radius: 8px !important; background: var(--field) !important; border-color: var(--line-soft) !important; color: var(--fg) !important; }
 #sidebar input:not(.toggle):not(.range):focus, #sidebar select:focus { border-color: var(--accent) !important; box-shadow: 0 0 0 3px var(--accent-soft) !important; }
 #chatForm > div { background: var(--field) !important; border-color: var(--line-soft) !important; }

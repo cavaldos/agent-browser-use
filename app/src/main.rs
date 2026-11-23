@@ -50,6 +50,8 @@ mod observe;
 mod pick;
 #[path = "system/proc.rs"]
 mod proc;
+#[path = "system/resources.rs"]
+mod resources;
 #[path = "system/prompt.rs"]
 mod prompt;
 #[path = "browser/share.rs"]
@@ -1826,6 +1828,7 @@ pub fn build_router(app: &Arc<App>) -> Router {
     let mut r = ws_routes(app.hub.clone());
     r = r.merge(devtools::routes(app.browser.clone()));
     r = r.merge(keepalive::routes(app.browser.clone()));
+    r = r.merge(resources::routes(app.browser.clone()));
     if let Some(a) = assets::global() {
         r = r.merge(assets::routes(app.hub.clone(), a, app.browser.clone()));
     }

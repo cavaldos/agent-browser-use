@@ -415,6 +415,8 @@ pub struct Chrome {
     kill: mpsc::UnboundedSender<()>,
     /// Obscura: it starts with no tab, and lacks some commands
     pub obscura: bool,
+    /// OS pid of the browser process (None for an Obscura reached over `-cdp-url`)
+    pub pid: Option<u32>,
 }
 
 pub struct LaunchSpec {
@@ -613,6 +615,7 @@ fn supervise(
     mut child: tokio::process::Child,
     temp_dir: Option<std::path::PathBuf>,
 ) -> Arc<Chrome> {
+    let pid = child.id();
     let (exited_tx, exited) = watch::channel(false);
     let (kill, mut kill_rx) = mpsc::unbounded_channel::<()>();
     let c2 = conn.clone();
@@ -638,6 +641,7 @@ fn supervise(
         exited,
         kill,
         obscura: false,
+        pid,
     })
 }
 
@@ -729,6 +733,7 @@ async fn launch_obscura(spec: &LaunchSpec) -> Result<Arc<Chrome>, String> {
 
 /// Like `supervise` for Obscura; without a process (`-cdp-url`) killing only drops the connection.
 fn supervise_obscura(conn: Arc<Conn>, child: Option<tokio::process::Child>) -> Arc<Chrome> {
+    let pid = child.as_ref().and_then(|c| c.id());
     let (exited_tx, exited) = watch::channel(false);
     let (kill, mut kill_rx) = mpsc::unbounded_channel::<()>();
     let c2 = conn.clone();
@@ -756,6 +761,7 @@ fn supervise_obscura(conn: Arc<Conn>, child: Option<tokio::process::Child>) -> A
         exited,
         kill,
         obscura: true,
+        pid,
     })
 }
 

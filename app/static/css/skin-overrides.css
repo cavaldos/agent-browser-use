@@ -32,4 +32,4 @@
 .tab.active::before, .tab.active::after { display: none !important; }
 
 /* Share button, its switch and every other button: 2px */
-#tunnelBtn, #tunnelSwitch, #tunnelSwitch span, #tunnelPop button, button { border-radius: 2px !important; }
+#tunnelBtn, #resBtn, #tunnelSwitch, #tunnelSwitch span, #tunnelPop button, button { border-radius: 2px !important; }

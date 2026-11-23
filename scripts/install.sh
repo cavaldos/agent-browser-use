@@ -25,4 +25,4 @@ case ":$PATH:" in *":$(dirname "$DEST"):"*) ;; *)
   echo "note: add to PATH: export PATH=\"$(dirname "$DEST"):\$PATH\"" >&2 ;;
 esac
 echo "installed $DEST"
-"$DEST" --version 2>/dev/null || true
+"$DEST" -version 2>/dev/null || true

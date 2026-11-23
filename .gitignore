@@ -16,4 +16,4 @@ dist/
 # runtime data (profile, downloads, states, flows, logs)
 log/
 warp.json
-agent-browser-use
+agent-browser-use*.log

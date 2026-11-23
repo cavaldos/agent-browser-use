@@ -54,7 +54,8 @@ https://github.com/user-attachments/assets/19edb4dd-3e3f-45e3-8809-b27a6c31be58
 
 ## Quick start
 
-1. Download the project and start the server (requires a Rust toolchain and Chrome/Chromium, or just Docker):
+1. Install the binary (see [Install](#install), no Rust needed) and run `agent-browser-use`, or run from source
+   (requires a Rust toolchain and Chrome/Chromium, or just Docker):
 
    ```sh
    git clone https://github.com/cavaldos/agent-browser-use.git
@@ -87,6 +88,8 @@ From source, use `make`:
 | `make run` | Run from source. Short options: `make run p=8080 pw=secret engine=brave` |
 | `make run -- -p 8080 -pw secret` | Pass any flag straight to the app |
 | `make build` | Build `bin/agent-browser-use` |
+| `make test-release` | Dry-run the release pipeline locally (`ARGS=--quick` for a fast check) |
+| `make release V=v1.2.3` | Tag and push a release (maintainers; runs fmt, clippy, tests first) |
 | `make install` | Build and install to `~/.local/bin` (`BINDIR=...` to change) |
 | `make docker` / `make docker-logs` / `make docker-stop` | Run in Docker, show its logs, stop it |
 | `make docker-warp` | Docker with a Cloudflare WARP container as the browser's proxy |
@@ -141,13 +144,13 @@ log/
 
 ## Install
 
-macOS / Linux (Windows: run it inside WSL)
+macOS / Linux
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/cavaldos/agent-browser-use/main/scripts/install.sh | sh
 ```
 
-Windows (PowerShell):
+Windows (PowerShell, installs the `.exe` into `%LOCALAPPDATA%\agent-browser-use`):
 
 ```powershell
 irm https://raw.githubusercontent.com/cavaldos/agent-browser-use/main/scripts/install.ps1 | iex
@@ -308,12 +311,26 @@ See [docs/GUIDE.md](docs/GUIDE.md) for the full tool reference, options, the sha
 - By default `/mcp` only accepts connections from the local machine, and it rejects requests from other websites.
 - Without `-pw`, anyone who can reach port 3000 can open the viewer and drive the browser. Keep it on a trusted network, or set a password.
 
+## Build and test
+
+Requires stable Rust (rustup). The tunnel needs `cloudflared` embedded at build time: `scripts/fetch-cloudflared.sh` downloads it into `app/cloudflared/` (the release build does this for you).
+
+```sh
+make build                                  # bin/agent-browser-use
+cd app && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+```
+
+CI (`.github/workflows/ci.yml`) runs the same checks on Linux and macOS. Pushing a tag `vX.Y.Z` (`make release V=vX.Y.Z`) builds and publishes binaries for macOS, Linux (arm64, amd64) and Windows (amd64).
+
 ## Project layout
 
 ```
-app/        Rust crate (MCP server, browser control, agent, web UI in static/)
+app/src/    Rust source: agent/ (MCP tools), browser/ (Chrome/CDP), network/ (tunnel, WARP, proxy),
+            recording/ (flows, assets, states), system/ (auth, update, menu)
+app/static/ web UI (embedded in the binary)
+app/parity/ golden outputs from the former Go version, used to check behaviour parity
 docker/     Dockerfile and entrypoint
-scripts/    run / build / docker scripts
+scripts/    run / build / release / docker scripts
 docs/       full guide and images
 bin/        built binary (make build)
 ```

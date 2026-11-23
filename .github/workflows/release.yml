@@ -50,6 +50,16 @@ jobs:
         # Same script scripts/test-release.sh runs locally.
         run: scripts/build-release.sh dist
 
+      - name: Smoke test the host binary
+        run: |
+          case "$(uname -s)" in Darwin) os=darwin ;; Linux) os=linux ;; *) os=windows ;; esac
+          case "$(uname -m)" in x86_64|amd64) arch=amd64 ;; *) arch=arm64 ;; esac
+          ext=; [ "$os" = windows ] && ext=.exe
+          bin="dist/agent-browser-use-$os-$arch$ext"
+          out=$("$bin" -version)
+          echo "$out"
+          echo "$out" | grep -q "${{ github.ref_name }}"
+
       - uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.runner }}

@@ -1,9 +1,0 @@
-Shared browser started (headless Google Chrome: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome)
-agent-browser-use is running:
-  http://localhost:3000
-  http://192.168.1.2:3000   (share this link on your network)
-MCP endpoint for AI agents: http://localhost:3000/mcp
-2026/11/15 13:48:55 + cavaldos joined
-2026/11/15 13:48:55 + cavaldos joined
-2026/11/15 13:48:58 - cavaldos left
-2026/11/15 13:48:59 + cavaldos joined

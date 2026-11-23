@@ -565,7 +565,7 @@ pub fn list_flows(dir: &str) -> Vec<FlowInfo> {
             }
         }
     }
-    out.sort_by(|a, b| time_key(&b.1).cmp(&time_key(&a.1)));
+    out.sort_by_key(|a| std::cmp::Reverse(time_key(&a.1)));
     out.into_iter().map(|(i, _)| i).collect()
 }
 

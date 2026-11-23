@@ -50,10 +50,10 @@ mod observe;
 mod pick;
 #[path = "system/proc.rs"]
 mod proc;
-#[path = "system/resources.rs"]
-mod resources;
 #[path = "system/prompt.rs"]
 mod prompt;
+#[path = "system/resources.rs"]
+mod resources;
 #[path = "browser/share.rs"]
 mod share;
 #[path = "recording/states.rs"]

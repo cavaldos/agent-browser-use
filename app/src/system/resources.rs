@@ -313,7 +313,11 @@ pub fn descendants(all: &[Proc], root: i32) -> Vec<Proc> {
             if q.pid == p && !out.iter().any(|o| o.pid == q.pid) {
                 out.push(*q);
             }
-            if q.ppid == p && q.pid != p && !out.iter().any(|o| o.pid == q.pid) && !want.contains(&q.pid) {
+            if q.ppid == p
+                && q.pid != p
+                && !out.iter().any(|o| o.pid == q.pid)
+                && !want.contains(&q.pid)
+            {
                 want.push(q.pid);
             }
         }
@@ -325,7 +329,11 @@ pub fn descendants(all: &[Proc], root: i32) -> Vec<Proc> {
 fn signal_all(pids: &[i32], cont: bool) {
     use nix::sys::signal::{kill, Signal};
     use nix::unistd::Pid;
-    let sig = if cont { Signal::SIGCONT } else { Signal::SIGSTOP };
+    let sig = if cont {
+        Signal::SIGCONT
+    } else {
+        Signal::SIGSTOP
+    };
     for p in pids {
         let _ = kill(Pid::from_raw(*p), sig);
     }
@@ -441,7 +449,12 @@ fn total_memory_kb() -> u64 {
         .args(["-n", "hw.memsize"])
         .output()
         .ok()
-        .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse::<u64>().ok())
+        .and_then(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .trim()
+                .parse::<u64>()
+                .ok()
+        })
         .map_or(0, |b| b / 1024)
 }
 

@@ -36,6 +36,8 @@ https://github.com/user-attachments/assets/19edb4dd-3e3f-45e3-8809-b27a6c31be58
   </tr>
   <tr>
     <td width="50%"><img src="docs/images/public-link.png" alt="Public link popover with the link and password to copy"><br><b>Share with a public link.</b> One switch opens a built-in tunnel: copy the link (and password) and send it, no router setup. Switch off and the link stops working.</td>
+    <td width="50%"><img src="docs/images/performance.png" alt="Manage resources"><br><b>Resource management.</b> Keep track of all the resources you create and use in your browser sessions.</td>
+    
     <td width="50%"></td>
   </tr>
 </table>
@@ -270,39 +272,7 @@ Then open **http://localhost:3000** to watch the agent work.
 
 ## Available tools
 
-| Tool | What it does |
-|---|---|
-| `browser_navigate` / `browser_navigate_back` / `browser_navigate_forward` / `browser_reload` | Open a URL (non-URL text is searched on Google), or move through history |
-| `browser_snapshot` | Accessibility outline of the page, with a `ref` for each actionable element |
-| `browser_click` / `browser_hover` / `browser_type` / `browser_press_key` | Click, hover, type into a field, press keys and shortcuts |
-| `browser_select_option` / `browser_scroll` / `browser_drag` | Pick `<select>` options, scroll, drag and drop |
-| `browser_wait_for` / `browser_wait_for_change` | Wait for text, or for the page to change on its own |
-| `browser_take_screenshot` / `browser_evaluate` | Screenshot the tab, or run JavaScript in the page |
-| `browser_tabs` / `browser_say` | Manage tabs, or show a message to the people watching |
-| `browser_console_messages` / `browser_network_requests` | Console output, exceptions and network requests (status, headers, response body). Action results also list new console errors and failed requests |
-| `browser_downloads` / `browser_file_upload` | Wait for and read downloaded files; fill `<input type=file>` from the upload folder |
-| `browser_cookies` / `browser_storage` / `browser_state` | Read and change cookies and localStorage/sessionStorage; save and restore a whole login session by name |
-| `browser_snapshot_diff` | Only what changed on the page since the last snapshot or a named baseline |
-| `browser_emulate` | Phone/tablet presets, screen size, pixel ratio, touch, user agent, locale, time zone, dark mode, GPS location, network speed |
-| `browser_get_flow` | Read a flow a person recorded (by its id, e.g. `flow-3fa9c1`), or list all flows |
-| `browser_run_flow` | Replay a recorded flow, optionally several times, with changed inputs (`inputs`) |
-
-### Recorded flows
-
-Record a task once, then let the agent repeat it or adapt it:
-
-1. Press the red record button under the screen and use the browser as usual (clicks, typing, choices in lists, keys, links, tabs).
-2. Press **Stop & save**. You get an id such as `flow-3fa9c1`.
-3. Paste the id to your agent with what you want, e.g. "flow-3fa9c1, do it for these three names". Alone, the id replays the flow once.
-
-The agent finds the flow with `browser_get_flow`, then replays it with `browser_run_flow` or follows its steps when the job needs changes. Actions the agent takes itself are not recorded.
-
-- **Passwords are never stored.** A password step needs its value passed in `inputs` at replay time, or a saved login (`browser_state`).
-- **Flows tab** (sidebar): list, search, rename, view and edit steps, remove steps, replay from the viewer, export and import as `.json`, delete.
-- Flows are saved in the `flows/` folder inside the home folder (change it with `-flows <folder>`).
-- Not recorded: hover-only menus, scrolling, and anything inside an iframe.
-
-See [docs/GUIDE.md](docs/GUIDE.md) for the full tool reference, options, the shared browser room, security and limitations.
+See [docs/TOOLS.md](docs/TOOLS.md) for the list of MCP tools and recorded flows.
 
 ## Security
 
@@ -324,22 +294,23 @@ CI (`.github/workflows/ci.yml`) runs the same checks on Linux and macOS. Pushing
 
 ## Project layout
 
-```
-app/src/    Rust source: agent/ (MCP tools), browser/ (Chrome/CDP), network/ (tunnel, WARP, proxy),
-            recording/ (flows, assets, states), system/ (auth, update, menu)
-app/static/ web UI (embedded in the binary)
-app/parity/ golden outputs from the former Go version, used to check behaviour parity
-docker/     Dockerfile and entrypoint
-scripts/    run / build / release / docker scripts
-docs/       full guide and images
-bin/        built binary (make build)
-```
+See [docs/PROJECT-LAYOUT.md](docs/PROJECT-LAYOUT.md) for a detailed walkthrough of every
+directory and module.
 
 ## Documentation
 
 - [docs/INSTALL.md](docs/INSTALL.md) — Docker, building from source, options.
 - [docs/GUIDE.md](docs/GUIDE.md) — full guide: tools, options, shared browser room, data, security and limitations.
+- [docs/TOOLS.md](docs/TOOLS.md) — MCP tools and recorded flows.
 - [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) — contributing and releasing.
+- [docs/PROJECT-LAYOUT.md](docs/PROJECT-LAYOUT.md) — detailed map of directories and modules.
+
+## MCP directories
+
+- [Glama](https://glama.ai/mcp/servers/cavaldos/agent-browser-use)
+- [Liqiwa MCP](https://mcp.liqiwa.com/s/cavaldos--agent-browser-use.html)
+- [m8ven](https://m8ven.ai/mcp/cavaldos/agent-browser-use)
+- [NicheDB](https://nichedb.dev/i/745594677)
 
 ## Star History
 

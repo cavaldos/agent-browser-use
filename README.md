@@ -44,15 +44,17 @@ https://github.com/user-attachments/assets/19edb4dd-3e3f-45e3-8809-b27a6c31be58
 
 ## Features
 
-- **Playwright-style MCP tools** — `browser_snapshot` returns an accessibility outline with a `ref` for every element, and the action tools (click, type, scroll, drag, select…) use those refs.
-- **Live viewer** — watch the page stream in your browser, with the agent's cursor, captions and chat log.
-- **Shared browser room** — you and the agent use the same Chrome; take control at any time, or block the agent.
-- **Pick an element** — click the pick button, point at anything on the page and get a short code (e.g. `el-1d2a`). Paste it to your coding agent, which looks the element up with `browser_get_element` and can act on it right away.
-- **Record a flow** — press the red record button, do a task in the browser, then stop. You get a flow id (e.g. `flow-3fa9c1`): paste just the id to your agent, which looks it up with `browser_get_flow` and replays it with `browser_run_flow` (repeat it N times, or change what gets typed with `inputs`) or adapts it to what you ask. The **Flows** tab in the sidebar lists your flows: view and edit their steps, rename, replay, export/import or delete them. Passwords are never stored: the agent must be given them at replay time.
-- **Assets tab** — everything the browser produced while you work is kept in the sidebar's **Assets** tab: screenshots (the agent's `browser_take_screenshot` and the *Capture screen* button), text copied in the shared browser, elements you picked and downloaded files. View, copy, download or remove each one. They survive a restart (`assets` folder next to the profile).
-- **Inspect (DevTools)** — press the `</>` button in the bottom bar to dock Chrome's own DevTools under the shared screen (it follows the active tab; drag its top edge to resize, or pop it out into a window). It goes through the server, so it sits behind the password and works over the public link. Pass `-no-devtools` to keep Chrome's local debugging port closed.
-- **Persistent logins** — cookies live in a profile folder, so you sign in once and the agent reuses the session.
-- **No heavy dependencies** — no Docker, X server or video encoder needed. Docker is available if you prefer it.
+| Feature                        | Description                                                                                                                                                               |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Playwright-style MCP tools** | `browser_snapshot` returns an accessibility outline with a `ref` per element; action tools (click, type, scroll, drag, select…) use those refs.                           |
+| **Live viewer**                | Watch the page stream with the agent's cursor, captions and chat log.                                                                                                     |
+| **Shared browser room**        | You and the agent share one Chrome; take control or block the agent anytime.                                                                                              |
+| **Pick an element**            | Pick button → short code (e.g. `el-1d2a`); agent looks it up via `browser_get_element` and acts on it.                                                                    |
+| **Record a flow**              | Record a task → flow id (e.g. `flow-3fa9c1`); replay via `browser_run_flow` (repeat N×, override `inputs`). Flows tab to view/edit/rename/export. Passwords never stored. |
+| **Assets tab**                 | Screenshots, copied text, picked elements and downloads kept in sidebar; view/copy/download/remove. Survive restart (`assets` folder).                                    |
+| **Inspect (DevTools)**         | `</>` button docks Chrome DevTools under the screen; works behind password/public link. `-no-devtools` keeps debug port closed.                                           |
+| **Persistent logins**          | Cookies in a profile folder; sign in once, agent reuses the session.                                                                                                      |
+| **No heavy dependencies**      | No Docker, X server or video encoder. Docker optional.                                                                                                                    |
 
 ## Quick start
 

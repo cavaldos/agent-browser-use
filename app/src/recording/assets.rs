@@ -20,7 +20,7 @@ use axum::Router;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::browser::Browser;
+use crate::browser::{Browser, BrowserApi};
 use crate::files::{safe_name, Download};
 use crate::{go_json, golog, Hub, Msg};
 use base64::Engine as _;
@@ -526,6 +526,56 @@ fn asset_kind(mime: &str) -> &'static str {
     }
 }
 
+/// POST /api/paste (alias: paste_image) -> paste an image from the viewer's clipboard straight
+/// into the focused element of the active page; it is not kept in Assets.
+async fn api_paste(State(st): State<ApiState>, req: Request) -> Response {
+    if let Some(r) = post_only(&req) {
+        return r;
+    }
+    let Some(b) = &st.browser else {
+        return http_error(StatusCode::SERVICE_UNAVAILABLE, "no browser is running");
+    };
+    let body = match axum::body::to_bytes(req.into_body(), 32 << 20).await {
+        Ok(b) => b,
+        Err(e) => return http_error(StatusCode::BAD_REQUEST, &e.to_string()),
+    };
+    let Ok(r) = serde_json::from_slice::<AssetAddRequest>(&body) else {
+        return http_error(StatusCode::BAD_REQUEST, "invalid JSON");
+    };
+    let f = match r.files.into_iter().next() {
+        Some(f) if !r.data.is_empty() || !f.data.is_empty() => f,
+        _ if !r.data.is_empty() => AssetAddFile {
+            name: r.name,
+            mime: r.mime,
+            data: r.data,
+        },
+        _ => return http_error(StatusCode::BAD_REQUEST, "data is required"),
+    };
+    let data = match decode_asset_data(&f.data) {
+        Ok(d) => d,
+        Err(e) => return http_error(StatusCode::BAD_REQUEST, &e),
+    };
+    if data.is_empty() {
+        return http_error(StatusCode::BAD_REQUEST, "data is empty");
+    }
+    if data.len() > 20 << 20 {
+        return http_error(StatusCode::BAD_REQUEST, "file is bigger than 20 MB");
+    }
+    let mut mime = f.mime.trim().to_string();
+    if mime.is_empty() {
+        mime = "image/png".into();
+    }
+    let mut name = safe_name(&f.name);
+    if name.is_empty() {
+        name = format!("pasted-image{}", extension_by_type(&mime).unwrap_or(""));
+    }
+    BrowserApi::paste_image(&**b, &mime, &name, &data);
+    Response::builder()
+        .status(StatusCode::NO_CONTENT)
+        .body(Body::empty())
+        .unwrap()
+}
+
 /// POST /api/assets/add (aliases: upload, paste, create, import) -> stores images/files as assets.
 async fn api_add(
     State(st): State<ApiState>,
@@ -623,6 +673,8 @@ pub fn routes(hub: Arc<Hub>, assets: Arc<Assets>, browser: Option<Arc<Browser>>)
         .route("/api/assets/new", any(api_add))
         .route("/api/assets/receive", any(api_add))
         .route("/api/assets/send", any(api_add))
+        .route("/api/paste", any(api_paste))
+        .route("/api/paste_image", any(api_paste))
         .with_state(st)
 }
 

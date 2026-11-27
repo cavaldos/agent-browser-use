@@ -135,7 +135,23 @@ kbd.addEventListener("input", (e) => {
   if (e.inputType === "insertText" && e.data) sendText(e.data);
   kbd.value = "";
 });
-kbd.addEventListener("paste", (e) => { e.preventDefault(); sendText(e.clipboardData.getData("text/plain")); });
+kbd.addEventListener("paste", async (e) => {
+  e.preventDefault();
+  const img = [...(e.clipboardData?.items || [])].find((it) => it.type && it.type.startsWith("image/"));
+  const file = img && img.getAsFile();
+  if (file && guard()) {
+    try {
+      const r = await fetch("/api/paste?by=" + encodeURIComponent(prefs.name || ""), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name || "", mime: file.type || "image/png", data: await fileToBase64(file) }),
+      });
+      if (!r.ok) toast((await r.text()).trim() || "Couldn't paste the image", "info");
+    } catch { toast("Couldn't paste the image", "info"); }
+    return;
+  }
+  sendText(e.clipboardData.getData("text/plain"));
+});
 
 // Text copied inside the shared browser -> this computer's clipboard.
 function copyToClipboard(text) {

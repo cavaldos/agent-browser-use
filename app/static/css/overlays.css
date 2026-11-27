@@ -100,7 +100,7 @@
 .asset-card:hover { border-color: var(--line); }
 .asset-card.fresh { animation: asset-in 1.6s ease-out; }
 @keyframes asset-in { 0% { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); } 100% { box-shadow: 0 0 0 0 transparent; } }
-.asset-thumb { display: block; width: 100%; max-height: 200px; object-fit: cover; object-position: top; cursor: zoom-in; background: var(--field); }
+.asset-thumb { display: block; width: 100%; max-height: 120px; object-fit: cover; object-position: top; cursor: zoom-in; background: var(--field); }
 .asset-pre { max-height: 6.2em; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: 8px; background: var(--field); padding: 6px 8px; font: 11.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--fg-2); }
 .asset-kind { display: inline-flex; align-items: center; gap: 4px; border-radius: 99px; padding: 1px 7px; font-size: 10.5px; font-weight: 600; background: var(--hover); color: var(--dim); }
 .asset-kind.screenshot { background: var(--accent-soft); color: var(--accent-fg); }

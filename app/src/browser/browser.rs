@@ -2760,6 +2760,47 @@ impl Browser {
         });
     }
 
+    /// pasteImage: paste a picture (from the viewer's clipboard) into the active page as a
+    /// ClipboardEvent, the way an app that accepts pasted images (Gmail, chat boxes, ...) gets one.
+    pub fn paste_image_cmd(&self, mime: &str, name: &str, data: &[u8]) {
+        let mime = mime.to_string();
+        let name = name.to_string();
+        let b64 = base64::engine::general_purpose::STANDARD.encode(data);
+        self.enqueue(move |b| async move {
+            let Some(t) = b.st().active.clone() else {
+                return;
+            };
+            // the base64 rides as a JSON string literal, so it needs no extra escaping for JS
+            let expr = format!(
+                r#"(() => {{
+  const bin = atob("{}");
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const file = new File([bytes], "{}", {{ type: "{}" }});
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  const el = document.activeElement || document.body;
+  const ok = el.dispatchEvent(new ClipboardEvent("paste", {{ clipboardData: dt, bubbles: true, cancelable: true }}));
+  return JSON.stringify({{ target: el.id || el.tagName || "?", accepted: !ok }});
+}})()"#,
+                b64,
+                name.replace('"', ""),
+                mime.replace('"', "")
+            );
+            match t
+                .call("Runtime.evaluate", serde_json::json!({"expression": expr}), Some(INPUT_TIMEOUT))
+                .await
+            {
+                Err(e) => golog(&format!("chrome: paste image: {e}")),
+                Ok(r) => {
+                    if let Some(d) = r.get("exceptionDetails") {
+                        golog(&format!("chrome: paste image: {}", crate::agent::exception_error(d)));
+                    }
+                }
+            }
+        });
+    }
+
     pub fn mouse_cmd(&self, m: &Msg) {
         let kind = match m.event.as_str() {
             "move" => JobKind::Move,
@@ -2987,6 +3028,7 @@ pub trait BrowserApi: Send + Sync {
     fn key(&self, m: &crate::Msg, on_copy: Box<dyn FnOnce(String) + Send>);
     fn text(&self, text: &str);
     fn drop_file(&self, x: f64, y: f64, path: &str);
+    fn paste_image(&self, mime: &str, name: &str, data: &[u8]);
     fn new_tab(&self, url: &str);
     fn close_tab(&self, id: &str);
     fn activate_tab(&self, id: &str);
@@ -3028,6 +3070,9 @@ impl BrowserApi for Browser {
     }
     fn drop_file(&self, x: f64, y: f64, path: &str) {
         self.drop_file_cmd(x, y, path);
+    }
+    fn paste_image(&self, mime: &str, name: &str, data: &[u8]) {
+        self.paste_image_cmd(mime, name, data);
     }
     fn new_tab(&self, url: &str) {
         self.new_tab_cmd(url);

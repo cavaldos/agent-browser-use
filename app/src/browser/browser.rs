@@ -1771,7 +1771,36 @@ impl Browser {
                 Some(CMD_TIMEOUT),
             )
             .await;
+        // a popup tab owns a real OS window; activating it would pop that window
+        // back over the desktop, so keep it minimized (the viewer tab is the UI)
+        if !t.opener.is_empty() {
+            self.minimize_window(&t.id).await;
+        }
         self.start_screencast(t, v).await;
+    }
+
+    /// minimize_window hides the OS window of a popup that a page opened: the page
+    /// keeps running and streaming (no backgrounding throttling), only the desktop
+    /// window goes away. Errors are ignored: Obscura and tests have no window.
+    async fn minimize_window(&self, target_id: &str) {
+        if let Ok(res) = self
+            .root_call(
+                "Browser.getWindowForTarget",
+                json!({"targetId": target_id}),
+                Some(CMD_TIMEOUT),
+            )
+            .await
+        {
+            if let Some(wid) = res["windowId"].as_i64() {
+                let _ = self
+                    .root_call(
+                        "Browser.setWindowBounds",
+                        json!({"windowId": wid, "bounds": {"windowState": "minimized"}}),
+                        Some(CMD_TIMEOUT),
+                    )
+                    .await;
+            }
+        }
     }
 
     pub async fn start_screencast(self: &Arc<Self>, t: &Arc<Tab>, v: View) {
@@ -2007,8 +2036,8 @@ impl Browser {
                 .system_chat("Tab limit reached — close a tab first");
             return;
         }
-        let opener = info["openerId"].as_str().unwrap_or_default();
-        let t = match self.attach(&id, opener, true).await {
+        let opener = info["openerId"].as_str().unwrap_or_default().to_string();
+        let t = match self.attach(&id, &opener, true).await {
             Ok(t) => t,
             Err(e) => {
                 golog(&format!("chrome: new tab: {e}"));
@@ -2030,7 +2059,12 @@ impl Browser {
         }
         self.on_info(&info);
         if !background {
-            self.enqueue(move |b| async move { b.activate(&t).await });
+            let t2 = t.clone();
+            self.enqueue(move |b| async move { b.activate(&t2).await });
+        } else if !opener.is_empty() {
+            // a background popup is never activated, so minimize its OS window here
+            let id = t.id.clone();
+            self.enqueue(move |b| async move { b.minimize_window(&id).await });
         }
     }
 

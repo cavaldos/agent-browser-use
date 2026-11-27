@@ -20,6 +20,7 @@ const ICONS = {
   shrink: '<path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/>',
   pip: '<rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="11" width="7" height="6" rx="1" fill="currentColor"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  puzzle: '<path d="M10 3H5a2 2 0 0 0-2 2v4h1a2 2 0 0 1 0 4H3v6a2 2 0 0 0 2 2h5v-1a2 2 0 0 1 4 0v1h5a2 2 0 0 0 2-2v-5h-1a2 2 0 0 1 0-4h1V5a2 2 0 0 0-2-2h-5v1a2 2 0 0 1-4 0z"/>',
   send: '<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',
   arrowRight: '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
   mouse: '<rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v4"/>',

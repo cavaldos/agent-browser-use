@@ -41,6 +41,7 @@ dependencies = [
  "signal-hook",
  "smoltcp",
  "subtle",
+ "tempfile",
  "tokio",
  "tokio-socks",
  "tokio-tungstenite 0.30.0",

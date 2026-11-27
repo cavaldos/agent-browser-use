@@ -125,6 +125,8 @@ pub struct Config {
     pub home: String,
     pub profile: String,
     pub chrome: String,
+    pub install_extension: String,
+    pub enable_extensions: bool,
     pub proxy: String,
     pub engine: String,
     pub cdp_url: String,
@@ -213,6 +215,8 @@ fn specs(env: &dyn Fn(&str) -> Option<String>) -> Vec<Spec> {
         spec("home", Str, s(""), "one folder for everything the app stores: browser profile, downloads, uploads, states, flows, warp.json, log (empty = ~/.config/agent-browser-use; ~/.agent-browser-use for the mcp command)"),
         spec("profile", Str, s(""), "folder for the shared browser's cookies/logins (empty = \"chrome-profile\" inside the home folder)"),
         spec("chrome", Str, s(""), "path to the browser executable (empty = auto-detect)"),
+        spec("install-extension", Str, s(""), "open a Chrome Web Store URL or extension ID in Chrome for manual installation, then exit"),
+        spec("enable-extensions", Bool, b(false), "enable extensions installed in the shared Google Chrome profile"),
         spec("proxy", Str, Val::Str(env(PROXY_ENV).unwrap_or_default()), "upstream SOCKS5 proxy for the shared browser only, e.g. socks5://127.0.0.1:40000 (empty = built-in Cloudflare WARP); the header switch turns it on/off"),
         spec("engine", Str, s("auto"), "browser to run: chromium, chrome, edge, brave, vivaldi, headless-shell (lightest), obscura (experimental, never picked by auto); auto = Chromium, else the first one installed"),
         spec("cdp-url", Str, s(""), "connect to an Obscura that is already running instead of starting a browser, e.g. ws://127.0.0.1:9222 (implies -engine obscura)"),
@@ -426,6 +430,34 @@ pub fn usage_text(env: &dyn Fn(&str) -> Option<String>) -> String {
     out
 }
 
+fn web_store_url(input: &str) -> Option<String> {
+    let input = input.trim();
+    let url = url::Url::parse(input).ok();
+    let id = if let Some(url) = &url {
+        if url.scheme() != "https"
+            || url.port().is_some()
+            || !url.username().is_empty()
+            || url.password().is_some()
+        {
+            return None;
+        }
+        let prefix = match url.host_str()? {
+            "chromewebstore.google.com" => "/detail/",
+            "chrome.google.com" => "/webstore/detail/",
+            _ => return None,
+        };
+        let detail = url.path().strip_prefix(prefix)?.trim_end_matches('/');
+        match detail.split_once('/') {
+            Some((slug, id)) if !slug.is_empty() => id,
+            _ => detail,
+        }
+    } else {
+        input
+    };
+    (id.len() == 32 && id.bytes().all(|c| (b'a'..=b'p').contains(&c)))
+        .then(|| format!("https://chromewebstore.google.com/detail/{id}"))
+}
+
 /// Parse like flag package (ExitOnError): -name, --name, -name=value, -name value; bool flags
 /// take only -name or -name=value; parsing stops at the first non-flag argument or after "--".
 pub fn parse_args(
@@ -496,6 +528,11 @@ pub fn parse_args(
                 Kind::Int => Val::Int(parse_go_int(&raw).ok_or_else(bad)?),
                 Kind::Float => Val::Float(raw.parse::<f64>().map_err(|_| bad())?),
                 Kind::Dur => Val::Dur(parse_go_duration(&raw).ok_or_else(bad)?),
+                Kind::Str if sp.target == "install-extension" => {
+                    Val::Str(web_store_url(&raw).ok_or_else(|| {
+                        Exit::Bad("-install-extension requires a Chrome Web Store detail URL or extension ID".into())
+                    })?)
+                }
                 _ => Val::Str(raw),
             }
         };
@@ -525,6 +562,8 @@ pub fn parse_args(
         home: st("home"),
         profile: st("profile"),
         chrome: st("chrome"),
+        install_extension: st("install-extension"),
+        enable_extensions: bo("enable-extensions"),
         proxy: st("proxy"),
         engine: st("engine"),
         cdp_url: st("cdp-url"),
@@ -550,6 +589,20 @@ pub fn parse_args(
         version: bo("version"),
         update: bo("update"),
     };
+    if cfg.enable_extensions || !cfg.install_extension.is_empty() {
+        if cfg.no_browser
+            || !cfg.cdp_url.is_empty()
+            || !matches!(
+                cfg.engine.trim().to_ascii_lowercase().as_str(),
+                "" | "auto" | "chrome"
+            )
+        {
+            return Err(Exit::Bad(
+                "Extension flags require the local Google Chrome engine (-engine chrome)".into(),
+            ));
+        }
+        cfg.engine = "chrome".into();
+    }
     if cfg.pw.is_empty() {
         // mcp.json can set it with "env": {"AGENT_BROWSER_USE_PASSWORD": "..."}
         cfg.pw = env(PASSWORD_ENV).unwrap_or_default();
@@ -565,6 +618,11 @@ pub fn parse_command_line(
     let stdio = argv.first().map(String::as_str) == Some("mcp");
     let args = if stdio { &argv[1..] } else { argv };
     let (config, rest) = parse_args(args, env)?;
+    if stdio && !config.install_extension.is_empty() {
+        return Err(Exit::Bad(
+            "Run -install-extension separately, without the mcp subcommand".into(),
+        ));
+    }
     Ok(Parsed {
         stdio,
         config,
@@ -1837,6 +1895,10 @@ pub struct App {
 pub fn build_router(app: &Arc<App>) -> Router {
     let mut r = ws_routes(app.hub.clone());
     r = r.merge(devtools::routes(app.browser.clone()));
+    #[cfg(target_os = "macos")]
+    {
+        r = r.merge(browser::store_install::routes(app.browser.clone()));
+    }
     r = r.merge(keepalive::routes(app.browser.clone()));
     r = r.merge(resources::routes(app.browser.clone()));
     if let Some(a) = assets::global() {
@@ -1923,6 +1985,12 @@ fn main() -> ExitCode {
         );
         return ExitCode::from(2);
     }
+    if !parsed.config.install_extension.is_empty() {
+        return match install_extension(&parsed.config) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => fatal(&e),
+        };
+    }
     // from a terminal: run the server as a child and show the menu
     if !parsed.stdio && menu::menu_wanted() {
         let full: Vec<String> = std::env::args().collect();
@@ -1933,6 +2001,43 @@ fn main() -> ExitCode {
     }
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
     rt.block_on(run(parsed))
+}
+
+fn install_extension(cfg: &Config) -> Result<(), String> {
+    let eng = engine::resolve_engine(&cfg.engine, &cfg.chrome)?;
+    let full: Vec<String> = std::env::args().collect();
+    let home = menu::state_dir(&cfg.home, &full);
+    let mut paths = Paths::new(cfg, &home.to_string_lossy());
+    paths.with_engine(&eng.name);
+
+    eprintln!(
+        "Install in the separate Google Chrome window, not in the Agent Browser Use viewer. \
+         Review the permissions and choose Add to Chrome, then quit Chrome."
+    );
+    let status = std::process::Command::new(eng.path)
+        .arg(format!("--user-data-dir={}", paths.profile))
+        .args([
+            "--no-first-run",
+            "--no-default-browser-check",
+            // Match the shared browser's credential storage for this profile.
+            "--password-store=basic",
+            "--use-mock-keychain",
+            &cfg.install_extension,
+        ])
+        .status()
+        .map_err(|e| format!("Could not open Chrome for extension setup: {e}"))?;
+    // Chromium's CHROME_RESULT_CODE_PROFILE_IN_USE.
+    if status.code() == Some(21) {
+        return Err(format!(
+            "Chrome profile is in use: {}. Stop Agent Browser Use (closing the viewer is not enough), \
+             quit any Chrome instance using this profile, and retry.",
+            paths.profile
+        ));
+    }
+    if !status.success() {
+        return Err(format!("Chrome extension setup exited with {status}"));
+    }
+    Ok(())
 }
 
 /// `log.Fatalf`.
@@ -2051,6 +2156,7 @@ async fn run(parsed: Parsed) -> ExitCode {
             state_dir: paths.states.clone(),
             flow_dir: paths.flows.clone(),
             no_dev_tools: cfg.no_devtools,
+            enable_extensions: cfg.enable_extensions,
             hooks: Some(Arc::new(browser::HookSet(vec![
                 Arc::new(observe::Observe),
                 Arc::new(share_hooks.clone()),
@@ -2298,6 +2404,42 @@ mod tests {
     }
 
     #[test]
+    fn chrome_extension_flags() {
+        let id = "ddkjiahejlhfcafbddmgiahcphecmpfh";
+        let canonical = format!("https://chromewebstore.google.com/detail/{id}");
+        let current = format!("https://chromewebstore.google.com/detail/example/{id}?hl=en");
+        let legacy = format!("https://chrome.google.com/webstore/detail/example/{id}");
+        for input in [id, &canonical, &current, &legacy] {
+            let c = parse(&["-install-extension", input]).unwrap().config;
+            assert_eq!(c.install_extension, canonical);
+            assert_eq!(c.engine, "chrome");
+            assert!(!c.enable_extensions);
+        }
+        for input in [
+            "",
+            "--no-sandbox",
+            "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+            &format!("https://chromewebstore.google.com.example.com/detail/{id}"),
+            &format!("http://chromewebstore.google.com/detail/{id}"),
+            &format!("https://other-user@chromewebstore.google.com/detail/{id}"),
+            &format!("https://chromewebstore.google.com:8443/detail/{id}"),
+            &format!("https://chromewebstore.google.com/search/{id}"),
+            &format!("https://chromewebstore.google.com/detail/a/b/{id}"),
+        ] {
+            assert!(matches!(
+                parse(&["-install-extension", input]),
+                Err(Exit::Bad(_))
+            ));
+        }
+        let c = parse(&["mcp", "-enable-extensions"]).unwrap().config;
+        assert!(c.enable_extensions && c.install_extension.is_empty());
+        assert_eq!(c.engine, "chrome");
+        assert!(parse(&["-enable-extensions", "-engine", "headless-shell"]).is_err());
+        assert!(parse(&["-enable-extensions", "-no-browser"]).is_err());
+        assert!(parse(&["mcp", "-install-extension", id]).is_err());
+    }
+
+    #[test]
     fn durations_and_floats() {
         let c = parse(&["-agent-idle", "1m30s", "-agent-speed", "1.5"])
             .unwrap()
@@ -2399,7 +2541,9 @@ mod tests {
         let mut sorted = names.clone();
         sorted.sort();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 34);
+        assert_eq!(names.len(), 36);
+        assert!(names.contains(&"install-extension"));
+        assert!(names.contains(&"enable-extensions"));
     }
 
     #[test]

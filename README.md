@@ -109,6 +109,8 @@ From source, use `make`:
 | `-home` | `~/.config/agent-browser-use` | The one folder where everything is stored (see below; or env `AGENT_BROWSER_USE_HOME`) |
 | `-engine` | `auto` | `chromium`, `chrome`, `edge`, `brave`, `vivaldi`, `headless-shell` (lightest), `obscura` (experimental, never chosen by `auto`) |
 | `-chrome` | auto-detect | Path to the browser executable |
+| `-install-extension` | none | Open a Chrome Web Store detail link or extension ID for manual installation, then exit |
+| `-enable-extensions` | off | Run the shared Google Chrome with its installed extensions enabled |
 | `-cdp-url` | none | Connect to an already running [Obscura](https://github.com/h4ckf0r0day/obscura) (`ws://127.0.0.1:9222`) instead of starting a browser |
 | `-width`, `-height` | `1280`, `720` | Shared screen size |
 | `-quality` | `92` | Image quality 10-100 (lower = less bandwidth) |
@@ -128,6 +130,32 @@ From source, use `make`:
 | `-profile`, `-downloads`, `-uploads`, `-states`, `-flows` | inside `-home` | Override where one specific part is stored |
 
 Run `agent-browser-use -h` for the full list. Set `AGENT_BROWSER_USE_NO_MENU=1` to run in the foreground instead of the terminal menu.
+
+### Chrome Web Store extensions
+
+**From the local viewer on macOS:** With Google Chrome as the shared browser, open `http://localhost:3000` (or your configured port) and paste a Chrome Web Store listing link into the viewer's address bar. Press Enter to open the install dialog. If the listing is already open in a regular viewer tab, choose **Install in viewer** under the address bar. You can also use the puzzle-piece button beside the address bar to enter a link or ID. Click **Open Chrome Web Store** to start the session. Click **Add to Chrome** in the preview and review the real Chrome permission dialog there. Choose **Return and enable extensions** after installing to keep extensions enabled for that profile. No CLI flags are needed.
+
+To see installed extensions (including disabled ones), click the puzzle-piece button and choose **Manage installed extensions**. Scroll the Chrome preview, click **Remove** beside an extension, and confirm in Chrome. Use **Return to viewer** when finished; this does not undo changes.
+
+Save your work first: starting either action restarts the shared browser and closes its open tabs. macOS must allow Screen Recording and Accessibility for Agent Browser Use (or the app that launched it). The preview is only available over localhost, never through the public tunnel. Chrome's extension toolbar popups are not part of the regular tab viewer after installation.
+
+**CLI fallback:** The Web Store's install button can keep spinning in a regular headless viewer tab. To use a separate Chrome window instead, **stop the Agent Browser Use process first** (`Ctrl+C` or **Quit** in the menu), then run:
+
+```sh
+agent-browser-use -install-extension '<Chrome Web Store detail URL or extension ID>'
+```
+
+In the Chrome window that opens, review the permissions and click **Add to Chrome**. Check `chrome://extensions` in that same window, then quit Chrome (on macOS, use **⌘Q**). The command opens Chrome for setup only; it does not start the web viewer or MCP server, and it cannot tell whether you accepted the install. Then start the headless browser with:
+
+```sh
+agent-browser-use -enable-extensions
+```
+
+Both flags select Google Chrome instead of `auto`, and both commands must use the same `-home` and `-profile` overrides, if any. For `agent-browser-use mcp -enable-extensions`, add `-home "$HOME/.agent-browser-use"` to the install command if you're using the default MCP home on macOS or Linux; otherwise pass the same explicit `-home` to both commands.
+
+**Linux VPS:** The in-viewer installer is macOS-only. For the CLI fallback, run full Google Chrome on the VPS as a regular user and connect to its desktop over a private remote-desktop connection (not a public VNC port). Install into the same profile that the agent will use, then start the agent with `-enable-extensions`. A headless-only VPS and the stock Chromium Docker image do not support this Web Store installation flow.
+
+Install only extensions you trust: they can access the shared browser's pages or data according to the permissions you grant. A wallet extension may expose a provider to a site, but the viewer cannot reliably show its unlock, connection, or signing popups. Use a trusted local browser or the site's mobile-wallet option where available. Do not put wallet recovery phrases or private keys on the shared browser or VPS.
 
 ### Where your data goes
 

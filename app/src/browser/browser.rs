@@ -84,6 +84,10 @@ fn is_false(b: &bool) -> bool {
 /// `error` values are strings here.
 pub type BResult<T> = Result<T, String>;
 
+#[cfg(target_os = "macos")]
+#[path = "store_install.rs"]
+pub mod store_install;
+
 #[derive(Default)]
 pub struct BrowserOptions {
     pub width: i64,
@@ -110,6 +114,7 @@ pub struct BrowserOptions {
     pub flow_dir: String,
     /// do not open Chrome's local debugging port: no Inspect in the viewer
     pub no_dev_tools: bool,
+    pub enable_extensions: bool,
     /// the hooks of observe/share/flow, installed before Chrome starts (see `HookSet`)
     pub hooks: Option<Arc<dyn BrowserHooks>>,
 }
@@ -515,7 +520,13 @@ pub fn chrome_flags(opt: &BrowserOptions) -> cdp::Flags {
     f.bool("disable-client-side-phishing-detection", true);
     f.bool("disable-default-apps", true);
     f.bool("disable-dev-shm-usage", true);
-    f.bool("disable-extensions", true);
+    let enabled = opt.enable_extensions
+        || (opt.engine.name == "chrome"
+            && !opt.profile.is_empty()
+            && std::path::Path::new(&opt.profile)
+                .join(".abu-extensions-enabled")
+                .is_file());
+    f.bool("disable-extensions", !enabled);
     f.str("disable-features", "Translate,BlinkGenPropertyTrees");
     f.bool("disable-hang-monitor", true);
     f.bool("disable-ipc-flooding-protection", true);
@@ -1150,14 +1161,19 @@ impl Browser {
         };
         golog(&format!("chrome: restarting: {reason}"));
         self.chat_later(format!("Restarting the browser: {reason}"));
+        if self.stop_for_restart().await {
+            self.relaunch().await;
+        }
+    }
 
+    async fn stop_for_restart(&self) -> bool {
         let (tabs, root) = {
             let mut st = self.st();
             if st.closed {
-                return;
+                return false;
             }
             let tabs = std::mem::take(&mut st.tabs);
-            let root = st.chrome.clone();
+            let root = st.chrome.take();
             st.active = None;
             st.frame = None;
             st.got_frame = false;
@@ -1172,10 +1188,14 @@ impl Browser {
         if let Some(root) = root {
             let _ = tokio::time::timeout(Duration::from_secs(3), root.close_gracefully()).await;
             root.kill(); // kills the process if it is still there
+            let _ = tokio::time::timeout(Duration::from_secs(3), root.wait_exit()).await;
         }
+        true
+    }
 
+    async fn relaunch(self: &Arc<Self>) {
         let mut try_ = 1u64;
-        loop {
+        while !self.st().closed {
             match self.launch().await {
                 Ok(()) => {
                     self.hub.system_chat("The browser is back");
@@ -3363,6 +3383,13 @@ mod tests {
         let a = chrome_flags(&opt).args();
         assert_eq!(a[0], "--no-first-run");
         assert!(a.contains(&"--headless=new".to_string()));
+        assert!(a.iter().any(|x| x == "--disable-extensions"));
+        let enabled = chrome_flags(&BrowserOptions {
+            enable_extensions: true,
+            ..Default::default()
+        })
+        .args();
+        assert!(!enabled.iter().any(|x| x == "--disable-extensions"));
         assert!(!a
             .iter()
             .any(|x| x == "--headless" || x.starts_with("--enable-automation")));

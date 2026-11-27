@@ -13,6 +13,11 @@
             <span id="urlIcon" class="grid h-6 w-6 shrink-0 place-items-center rounded-full text-zinc-400"></span>
             <input id="urlInput" placeholder="Search Google or type a URL" autocomplete="off" spellcheck="false">
           </form>
+          <button id="storeInstallBtn" class="icon-btn rounded-full" type="button" aria-label="Chrome extensions" title="Chrome extensions" hidden><i data-icon="puzzle"></i></button>
+        </div>
+        <div id="storeInstallHint" hidden>
+          <span id="storeInstallHintText"></span>
+          <button id="storeInstallHere" class="btn-primary" type="button">Install in viewer</button>
         </div>
         <div id="viewport">
           <canvas id="screen" width="1280" height="720"></canvas>
@@ -51,6 +56,26 @@
       <div id="flowPop" class="pop rounded-xl border border-blue-400/60 bg-zinc-900/95 p-3 text-[13px] text-zinc-200 shadow-2xl backdrop-blur" hidden></div>
       <div id="toasts" class="pointer-events-none absolute inset-x-4 bottom-16 z-20 flex flex-col items-center gap-2"></div>
     </section>
+
+    <dialog id="storeInstallDialog" aria-labelledby="storeInstallTitle">
+      <h2 id="storeInstallTitle">Chrome extensions</h2>
+      <form id="storeInstallForm">
+        <p>Save your work first: the shared Chrome will restart and close its open tabs.</p>
+        <label for="storeInstallValue">Chrome Web Store link or extension ID</label>
+        <input id="storeInstallValue" required maxlength="1500" spellcheck="false" autocomplete="off">
+        <button class="btn-primary" type="submit">Open Chrome Web Store</button>
+        <button id="storeManageBtn" class="btn-primary" type="button">Manage installed extensions</button>
+      </form>
+      <p id="storeInstallStatus" role="status" aria-live="polite"></p>
+      <div id="storeInstallPreview" hidden>
+        <img id="storeInstallFrame" alt="Chrome's extensions window" aria-label="Chrome extensions: use the arrow keys to move the crosshair and Enter to press a button. Use Page Up or Page Down to scroll the list." tabindex="0">
+        <span id="storeInstallCursor" aria-hidden="true">+</span>
+      </div>
+      <div class="store-install-actions">
+        <button id="storeInstallCancel" type="button">Close</button>
+        <button id="storeInstallDone" class="btn-primary" type="button" hidden>Return and enable extensions</button>
+      </div>
+    </dialog>
 
     <!-- Inspect: Chrome DevTools of the tab on screen, docked under the shared screen -->
     <section id="devPanel" class="relative flex shrink-0 flex-col border-t border-white/[.08] bg-[#202124]" hidden>

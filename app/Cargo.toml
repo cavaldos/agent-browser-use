@@ -43,5 +43,8 @@ smoltcp = { version = "0.14", default-features = false, features = ["std", "medi
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.32.0", features = ["process", "signal"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+tempfile = "3.27.0"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Threading"] }

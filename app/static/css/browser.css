@@ -19,6 +19,20 @@
 #stage:fullscreen .browser-window { border-radius: 0; box-shadow: none; }
 #stage.typing .browser-window { box-shadow: 0 0 0 1px rgb(129 140 248 / .55), 0 40px 80px -20px rgb(0 0 0 / .8), 0 0 50px rgb(99 102 241 / .18); }
 
+#storeInstallHint { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 7px 12px; background: #252830; color: #edf0f7; font-size: 0.8rem; }
+#storeInstallHere { padding: 4px 8px; border-radius: 6px; }
+#storeInstallDialog { margin: auto; width: min(90vw, 1080px); max-height: 94vh; overflow: auto; padding: 16px; color: #fafafa; background: #202124; border: 1px solid #555; border-radius: 12px; }
+#storeInstallDialog::backdrop { background: #000a; }
+#storeInstallDialog h2 { font-size: 1rem; font-weight: 650; margin-bottom: 8px; }
+#storeInstallForm > * { display: block; margin-bottom: 8px; }
+#storeInstallValue { width: 100%; padding: 8px; border: 1px solid #777; border-radius: 6px; }
+#storeInstallDialog button { padding: 6px 12px; border-radius: 6px; }
+#storeInstallCancel { border: 1px solid #777; }
+#storeInstallPreview { position: relative; width: fit-content; margin: 10px auto; }
+#storeInstallFrame { cursor: pointer; max-width: 100%; max-height: 64vh; width: auto; height: auto; }
+#storeInstallCursor { position: absolute; transform: translate(-50%, -50%); pointer-events: none; color: #fff; text-shadow: 0 0 4px #000, 0 0 4px #000; font: bold 24px monospace; }
+.store-install-actions { display: flex; gap: 8px; justify-content: end; margin-top: 10px; }
+
 #tabstrip { display: flex; align-items: flex-end; height: 40px; padding: 6px 6px 0 8px; background: var(--frame); user-select: none; }
 #tablist { display: flex; align-items: flex-end; flex: 1 1 auto; min-width: 0; height: 100%; }
 .newtab { display: grid; place-items: center; width: 28px; height: 28px; margin: 0 0 4px 6px; flex-shrink: 0; border-radius: 99px; color: #a1a1aa; transition: background .15s, color .15s; }
@@ -62,9 +76,12 @@
 }
 .tab.active .tab-close { display: grid; }
 
-#toolbar { display: flex; align-items: center; gap: 2px; height: 44px; padding: 0 8px 0 6px; background: var(--toolbar); border-bottom: 1px solid rgb(0 0 0 / .35); }
+#toolbar { display: grid; grid-template-columns: repeat(3, min(32px, 16%)) minmax(0, 1fr) auto; align-items: center; gap: 2px; height: 44px; padding: 0 8px 0 6px; background: var(--toolbar); border-bottom: 1px solid rgb(0 0 0 / .35); }
+#toolbar > button { max-width: 100%; }
+#storeInstallBtn { display: grid; place-items: center; width: 32px; height: 32px; }
+#storeInstallBtn svg { width: 16px; height: 16px; }
 .omnibox {
-  display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; height: 32px; margin-left: 6px; padding: 0 12px 0 4px;
+  display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; height: 32px; margin-left: 6px; padding: 0 12px 0 4px;
   border-radius: 99px; background: var(--omni); border: 1px solid transparent; transition: border-color .15s, box-shadow .15s, background .15s;
 }
 .omnibox:hover { background: #1b1b1f; }

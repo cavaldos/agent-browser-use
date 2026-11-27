@@ -54,9 +54,18 @@ pub fn state_dir(home_flag: &str, argv: &[String]) -> PathBuf {
     if dir.is_empty() {
         dir = std::env::var("AGENT_BROWSER_USE_HOME").unwrap_or_default();
     }
-    // Default: "log" next to where the app is started, except for the `mcp` command.
+    // Default: one folder under ~/.config, except for the `mcp` command.
     if dir.is_empty() && !(argv.len() > 1 && argv[1] == "mcp") {
-        dir = "log".to_string();
+        let home_var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+        let home = std::env::var_os(home_var)
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        dir = home
+            .join(".config")
+            .join(APP_NAME)
+            .to_string_lossy()
+            .into_owned();
     }
     if dir.is_empty() {
         // stdio mode: an MCP client starts us from any folder.

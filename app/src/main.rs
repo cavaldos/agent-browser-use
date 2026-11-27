@@ -210,7 +210,7 @@ fn specs(env: &dyn Fn(&str) -> Option<String>) -> Vec<Spec> {
         spec("quality", Int, i(92), "image quality 10-100 (lower = less bandwidth)"),
         spec("max-tabs", Int, i(12), "maximum number of open tabs"),
         spec("start", Str, s("https://www.google.com"), "page for new tabs"),
-        spec("home", Str, s(""), "one folder for everything the app stores: browser profile, downloads, uploads, states, flows, warp.json, log (empty = \"log\" in the current folder; ~/.agent-browser-use for the mcp command)"),
+        spec("home", Str, s(""), "one folder for everything the app stores: browser profile, downloads, uploads, states, flows, warp.json, log (empty = ~/.config/agent-browser-use; ~/.agent-browser-use for the mcp command)"),
         spec("profile", Str, s(""), "folder for the shared browser's cookies/logins (empty = \"chrome-profile\" inside the home folder)"),
         spec("chrome", Str, s(""), "path to the browser executable (empty = auto-detect)"),
         spec("proxy", Str, Val::Str(env(PROXY_ENV).unwrap_or_default()), "upstream SOCKS5 proxy for the shared browser only, e.g. socks5://127.0.0.1:40000 (empty = built-in Cloudflare WARP); the header switch turns it on/off"),

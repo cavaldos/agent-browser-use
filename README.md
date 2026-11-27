@@ -106,7 +106,7 @@ From source, use `make`:
 |---|---|---|
 | `-port`, `-p` | `3000` | HTTP port |
 | `-pw` | none | Password for the web UI and `/mcp` (or env `AGENT_BROWSER_USE_PASSWORD`) |
-| `-home` | `log` (current folder) | The one folder where everything is stored (see below; or env `AGENT_BROWSER_USE_HOME`) |
+| `-home` | `~/.config/agent-browser-use` | The one folder where everything is stored (see below; or env `AGENT_BROWSER_USE_HOME`) |
 | `-engine` | `auto` | `chromium`, `chrome`, `edge`, `brave`, `vivaldi`, `headless-shell` (lightest), `obscura` (experimental, never chosen by `auto`) |
 | `-chrome` | auto-detect | Path to the browser executable |
 | `-cdp-url` | none | Connect to an already running [Obscura](https://github.com/h4ckf0r0day/obscura) (`ws://127.0.0.1:9222`) instead of starting a browser |
@@ -131,10 +131,10 @@ Run `agent-browser-use -h` for the full list. Set `AGENT_BROWSER_USE_NO_MENU=1` 
 
 ### Where your data goes
 
-Everything the app creates lives in **one folder** named `log/`, created in the folder you start the app from (`make run`: the project root). Change it with `-home <folder>`. With `agent-browser-use mcp` (started by an agent from any folder) it is `~/.agent-browser-use/` instead.
+Everything the app creates lives in **one folder**, `~/.config/agent-browser-use/`, created on first start. Change it with `-home <folder>`. With `agent-browser-use mcp` (started by an agent from any folder) it is `~/.agent-browser-use/` instead.
 
 ```
-log/
+~/.config/agent-browser-use/
   chrome-profile/        browser cookies and logins (delete it to log out of everything)
   downloads/             files the browser downloaded
   uploads/               files the agent may upload from

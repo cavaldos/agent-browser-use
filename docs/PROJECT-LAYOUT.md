@@ -174,17 +174,17 @@ docker/chromium/        package/source list for installing Chromium in the image
 
 ## Runtime data (`-home`)
 
-All persistent state lives under one folder: by default `log/` in the current directory,
+All persistent state lives under one folder: by default `~/.config/agent-browser-use/`,
 or `~/.agent-browser-use/` for the `mcp` command. Inside it:
 
 ```
-log/chrome-profile*/   browser profiles (one per engine variant)
-log/downloads/         downloaded files
-log/uploads/           the only folder the agent may upload from
-log/states/            saved logins/sessions (cookies — keep private)
-log/flows/             recorded flows
-log/assets/            screenshots and other captured assets
-warp.json              WARP configuration
+chrome-profile*/      browser profiles (one per engine variant)
+downloads/            downloaded files
+uploads/              the only folder the agent may upload from
+states/               saved logins/sessions (cookies — keep private)
+flows/                recorded flows
+assets/               screenshots and other captured assets
+warp.json             WARP configuration
 ```
 
 For the exact flags and paths, see [INSTALL.md](INSTALL.md) and [GUIDE.md](GUIDE.md).

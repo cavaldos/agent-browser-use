@@ -256,7 +256,7 @@ server logs a one-time warning if it sees that combination.
 
 ## Data
 
-- Everything lives in one home folder, `log/` in the folder you start the app from (`~/.agent-browser-use/` for `agent-browser-use mcp`; change it with `-home` or `AGENT_BROWSER_USE_HOME`): `chrome-profile/` (cookies/logins), `downloads/`, `uploads/`, `states/`, `flows/`, `warp.json` and `agent-browser-use.log`.
+- Everything lives in one home folder, `~/.config/agent-browser-use/` (`~/.agent-browser-use/` for `agent-browser-use mcp`; change it with `-home` or `AGENT_BROWSER_USE_HOME`): `chrome-profile/` (cookies/logins), `downloads/`, `uploads/`, `states/`, `flows/`, `warp.json` and `agent-browser-use.log`.
 - Chat history is kept in memory only and is gone after a restart. Pass `-data chat.json` to keep it in a file.
 - `-profile`, `-downloads`, `-uploads`, `-states` and `-flows` override one part. Delete `chrome-profile/` to log out of everything.
 

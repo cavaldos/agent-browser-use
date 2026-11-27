@@ -102,6 +102,7 @@ function renderSettings() {
   const q = [...$("#qualSelect").options].reduce((a, o) => (Math.abs(o.value - state.view.quality) < Math.abs(a.value - state.view.quality) ? o : a));
   $("#qualSelect").value = q.value;
   $("#viewInfo").textContent = `${state.view.width}×${state.view.height}`;
+  if ($("#colorSchemeSelect")) $("#colorSchemeSelect").value = state.colorScheme || "";
   $("#scrollSpeed").value = prefs.scroll;
   $("#scrollVal").textContent = prefs.scroll + "×";
   $("#optCursors").checked = prefs.cursors;
@@ -113,6 +114,10 @@ function sendView(v) {
 }
 $("#resSelect").onchange = (e) => { const [w, h] = e.target.value.split("x").map(Number); sendView({ width: w, height: h }); };
 $("#qualSelect").onchange = (e) => sendView({ quality: +e.target.value });
+$("#colorSchemeSelect").onchange = (e) => {
+  if (!guard()) return renderSettings();
+  send({ type: "color_scheme", colorScheme: e.target.value });
+};
 $("#scrollSpeed").oninput = (e) => { prefs.scroll = +e.target.value; save("scroll", prefs.scroll); renderSettings(); };
 $("#optCursors").onchange = (e) => { prefs.cursors = e.target.checked; save("cursors", prefs.cursors ? "on" : "off"); if (!prefs.cursors) $("#cursors").innerHTML = ""; };
 $("#optEmotes").onchange = (e) => { prefs.emotes = e.target.checked; save("emotes", prefs.emotes ? "on" : "off"); };

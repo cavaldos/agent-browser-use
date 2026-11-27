@@ -716,6 +716,12 @@ pub struct Msg {
     pub active: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub view: Option<browser::View>,
+    #[serde(
+        default,
+        rename = "colorScheme",
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub color_scheme: String,
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub index: i64,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -1289,6 +1295,17 @@ impl Hub {
         );
     }
 
+    pub fn broadcast_color_scheme(&self, color_scheme: String) {
+        self.lock().broadcast(
+            &Msg {
+                type_: "color_scheme".into(),
+                color_scheme,
+                ..Default::default()
+            },
+            None,
+        );
+    }
+
     pub fn broadcast_frame(&self, pkt: Bytes) {
         let st = self.lock();
         for c in &st.clients {
@@ -1473,7 +1490,7 @@ impl Hub {
 
             "nav" | "back" | "forward" | "reload" | "stop" | "mouse" | "key" | "text"
             | "tab_new" | "tab_close" | "tab_activate" | "tab_move" | "tab_mute" | "view"
-            | "asset_drop" => {
+            | "color_scheme" | "asset_drop" => {
                 let Some(b) = self.browser() else {
                     return;
                 };
@@ -1540,6 +1557,7 @@ impl Hub {
                             b.set_view(v);
                         }
                     }
+                    "color_scheme" => b.set_color_scheme(&m.color_scheme),
                     _ => {}
                 }
             }
@@ -1572,6 +1590,9 @@ impl Hub {
             init.tabs = tabs;
             init.active = active;
             init.view = Some(v);
+            if let Some(b) = self.browser() {
+                init.color_scheme = b.color_scheme();
+            }
             frame = f;
         }
 

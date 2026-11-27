@@ -56,6 +56,7 @@ function onMessage(m) {
       state.blocked = m.blocked || null;
       state.enabled = !!m.enabled;
       if (m.view) state.view = m.view;
+      if (m.colorScheme !== undefined) state.colorScheme = m.colorScheme || "";
       setTabs(m.tabs || [], m.active || "");
       if (!state.enabled) $("#loading span").textContent = "The shared browser is disabled on this server";
       $("#messages").innerHTML = ""; lastGroup = null;
@@ -98,6 +99,14 @@ function onMessage(m) {
       break;
     case "tabs": setTabs(m.tabs || [], m.active || ""); break;
     case "view": state.view = m.view; renderSettings(); layout(); break;
+    case "color_scheme":
+      state.colorScheme = m.colorScheme || "";
+      if (state.colorScheme === "light" || state.colorScheme === "dark") {
+        document.documentElement.dataset.theme = state.colorScheme;
+        save("theme", state.colorScheme);
+      }
+      renderSettings();
+      break;
     case "pick": onPick(m); break;
     case "rec": onRec(m.rec); break;
     case "rec_done": onRecDone(m.rec); break;

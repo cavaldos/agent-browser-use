@@ -480,6 +480,7 @@ impl Browser {
                 b.start_screencast(&active, v).await;
             }
             b.hub.broadcast_view(v);
+            b.hub.broadcast_color_scheme(e.color_scheme.clone());
             Ok(e)
         })
         .await

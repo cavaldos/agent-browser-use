@@ -2608,6 +2608,29 @@ impl Browser {
         });
     }
 
+    /// SetColorScheme applies a browser color scheme (light/dark/empty) to all tabs without
+    /// changing the shared screen size. Mirrors set_emulation but only touches color scheme.
+    pub fn set_color_scheme_cmd(&self, scheme: &str) {
+        let scheme = scheme.to_string();
+        self.enqueue(move |b| async move {
+            let (e, v, tabs) = {
+                let mut st = b.st();
+                let mut e = st.emu.clone();
+                match scheme.to_lowercase().as_str() {
+                    "light" | "dark" => e.color_scheme = scheme.to_lowercase(),
+                    "" | "none" | "no-preference" | "default" | "system" => e.color_scheme.clear(),
+                    _ => return,
+                }
+                st.emu = e.clone();
+                (e, st.view, st.tabs.clone())
+            };
+            for t in &tabs {
+                let _ = b.apply_emulation(t, v, &e).await;
+            }
+            b.hub.broadcast_color_scheme(e.color_scheme.clone());
+        });
+    }
+
     /// refit restores a tab's screen size after Chrome changed it on its own (the
     /// frames came out squashed until the size was switched back and forth by hand).
     /// Setting the same size again is ignored by Chrome, so step off it first.
@@ -3089,6 +3112,8 @@ pub trait BrowserApi: Send + Sync {
     fn move_tab(&self, id: &str, index: i64);
     fn mute_tab(&self, id: &str);
     fn set_view(&self, v: View);
+    fn set_color_scheme(&self, scheme: &str);
+    fn color_scheme(&self) -> String;
     /// `pageOf`: URL and title of the active page.
     fn page_of(&self) -> (String, String);
     /// `releaseOwner(handle)`: drop the tab locks of a coding agent that left.
@@ -3145,6 +3170,12 @@ impl BrowserApi for Browser {
     }
     fn set_view(&self, v: View) {
         self.set_view_cmd(v);
+    }
+    fn set_color_scheme(&self, scheme: &str) {
+        self.set_color_scheme_cmd(scheme);
+    }
+    fn color_scheme(&self) -> String {
+        self.emulation().color_scheme
     }
     /// assets.rs `pageOf`
     fn page_of(&self) -> (String, String) {

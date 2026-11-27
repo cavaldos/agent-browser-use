@@ -23,6 +23,7 @@ use std::collections::HashMap;
 use crate::browser::Browser;
 use crate::files::{safe_name, Download};
 use crate::{go_json, golog, Hub, Msg};
+use base64::Engine as _;
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
@@ -189,6 +190,11 @@ fn type_by_extension(ext: &str) -> String {
         _ => "",
     }
     .to_string()
+}
+
+/// Public wrapper for mime lookup by extension (with leading dot).
+pub fn mime_by_extension(ext: &str) -> String {
+    type_by_extension(ext)
 }
 
 /// mime.FormatMediaType("attachment", {"filename": name})
@@ -464,6 +470,139 @@ fn post_only(r: &Request) -> Option<Response> {
 }
 
 /// registerAssetAPI
+#[derive(Deserialize)]
+struct AssetAddFile {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    mime: String,
+    data: String,
+}
+
+#[derive(Deserialize)]
+struct AssetAddRequest {
+    #[serde(default)]
+    files: Vec<AssetAddFile>,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    mime: String,
+    #[serde(default)]
+    data: String,
+}
+
+fn decode_asset_data(s: &str) -> Result<Vec<u8>, String> {
+    let s = s.trim();
+    let s = match s.find(',') {
+        Some(i) if s[..i].contains("base64") => &s[i + 1..],
+        _ => s,
+    };
+    base64::engine::general_purpose::STANDARD
+        .decode(s)
+        .map_err(|e| e.to_string())
+}
+
+fn asset_mime(name: &str, mime: &str) -> String {
+    if !mime.trim().is_empty() {
+        return mime.trim().to_string();
+    }
+    let ext = match name.rfind('.') {
+        Some(i) => &name[i..],
+        None => "",
+    };
+    let m = type_by_extension(ext);
+    if m.is_empty() {
+        "application/octet-stream".to_string()
+    } else {
+        m
+    }
+}
+
+fn asset_kind(mime: &str) -> &'static str {
+    if mime.starts_with("image/") {
+        "image"
+    } else {
+        "file"
+    }
+}
+
+/// POST /api/assets/add (aliases: upload, paste, create, import) -> stores images/files as assets.
+async fn api_add(
+    State(st): State<ApiState>,
+    Query(q): Query<HashMap<String, String>>,
+    req: Request,
+) -> Response {
+    if let Some(r) = post_only(&req) {
+        return r;
+    }
+    let body = match axum::body::to_bytes(req.into_body(), 64 << 20).await {
+        Ok(b) => b,
+        Err(e) => return http_error(StatusCode::BAD_REQUEST, &e.to_string()),
+    };
+    let mut files: Vec<AssetAddFile> = Vec::new();
+    if !body.is_empty() {
+        if let Ok(r) = serde_json::from_slice::<AssetAddRequest>(&body) {
+            files = r.files;
+            if files.is_empty() && !r.data.is_empty() {
+                files.push(AssetAddFile {
+                    name: r.name,
+                    mime: r.mime,
+                    data: r.data,
+                });
+            }
+        } else {
+            return http_error(StatusCode::BAD_REQUEST, "invalid JSON");
+        }
+    }
+    let by = cut(q.get("by").map(|s| s.as_str()).unwrap_or("agent"), 40)
+        .trim()
+        .to_string();
+    let mut added: Vec<Asset> = Vec::new();
+    for f in files {
+        let mut name = safe_name(&f.name);
+        let mime = asset_mime(&name, &f.mime);
+        if name.is_empty() {
+            let ext = extension_by_type(&mime).unwrap_or(".bin");
+            name = format!("asset{}", ext);
+        }
+        let data = match decode_asset_data(&f.data) {
+            Ok(d) => d,
+            Err(e) => return http_error(StatusCode::BAD_REQUEST, &e),
+        };
+        if data.is_empty() {
+            continue;
+        }
+        if data.len() > 20 << 20 {
+            return http_error(StatusCode::BAD_REQUEST, "file is bigger than 20 MB");
+        }
+        let a = st.assets.add(
+            Asset {
+                kind: asset_kind(&mime).into(),
+                name,
+                mime,
+                by: if by.is_empty() {
+                    "agent".into()
+                } else {
+                    by.clone()
+                },
+                ..Default::default()
+            },
+            Some(&data),
+        );
+        if let Some(a) = a {
+            added.push(a);
+        }
+    }
+    if added.is_empty() {
+        return http_error(StatusCode::BAD_REQUEST, "no files");
+    }
+    #[derive(Serialize)]
+    struct Out {
+        assets: Vec<Asset>,
+    }
+    json_response(go_json(&Out { assets: added }))
+}
+
 pub fn routes(hub: Arc<Hub>, assets: Arc<Assets>, browser: Option<Arc<Browser>>) -> Router {
     let st = ApiState {
         hub,
@@ -476,6 +615,14 @@ pub fn routes(hub: Arc<Hub>, assets: Arc<Assets>, browser: Option<Arc<Browser>>)
         .route("/api/assets/delete", any(api_delete))
         .route("/api/assets/clear", any(api_clear))
         .route("/api/assets/capture", any(api_capture))
+        .route("/api/assets/add", any(api_add))
+        .route("/api/assets/upload", any(api_add))
+        .route("/api/assets/paste", any(api_add))
+        .route("/api/assets/create", any(api_add))
+        .route("/api/assets/import", any(api_add))
+        .route("/api/assets/new", any(api_add))
+        .route("/api/assets/receive", any(api_add))
+        .route("/api/assets/send", any(api_add))
         .with_state(st)
 }
 
@@ -538,7 +685,7 @@ async fn api_file(
         return r;
     }
     // Only pictures are shown inline: a downloaded page must never run on our origin.
-    if a.kind != "screenshot" {
+    if a.kind != "screenshot" && !a.mime.starts_with("image/") {
         b = b
             .header(header::CONTENT_TYPE, "application/octet-stream")
             .header(header::CONTENT_DISPOSITION, attachment(&name));

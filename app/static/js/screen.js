@@ -150,6 +150,21 @@ function copyToClipboard(text) {
   toast("Copied to your clipboard", "copy");
 }
 
+// --- Drag and drop an asset from the Assets tab onto the shared screen ---
+scr.addEventListener("dragover", (e) => {
+  if (!draggedAssetId) return;
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+});
+scr.addEventListener("drop", (e) => {
+  if (!draggedAssetId) return;
+  e.preventDefault();
+  const id = draggedAssetId;
+  draggedAssetId = null;
+  if (!guard()) return;
+  send({ type: "asset_drop", id, ...pos(e) });
+});
+
 // --- Fullscreen & picture-in-picture ---
 $("#fullBtn").onclick = () => (document.fullscreenElement ? document.exitFullscreen() : stage.requestFullscreen());
 document.addEventListener("fullscreenchange", () => {

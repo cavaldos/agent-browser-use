@@ -1414,7 +1414,8 @@ impl Hub {
             }
 
             "nav" | "back" | "forward" | "reload" | "stop" | "mouse" | "key" | "text"
-            | "tab_new" | "tab_close" | "tab_activate" | "tab_move" | "tab_mute" | "view" => {
+            | "tab_new" | "tab_close" | "tab_activate" | "tab_move" | "tab_mute" | "view"
+            | "asset_drop" => {
                 let Some(b) = self.browser() else {
                     return;
                 };
@@ -1462,6 +1463,15 @@ impl Hub {
                         );
                     }
                     "text" => b.text(&m.text),
+                    "asset_drop" => {
+                        let path = crate::assets::global()
+                            .and_then(|a| a.get(&m.id))
+                            .map(|a| a.path)
+                            .unwrap_or_default();
+                        if !path.is_empty() {
+                            b.drop_file(m.x, m.y, &path);
+                        }
+                    }
                     "tab_new" => b.new_tab(&m.url),
                     "tab_close" => b.close_tab(&m.id),
                     "tab_activate" => b.activate_tab(&m.id),

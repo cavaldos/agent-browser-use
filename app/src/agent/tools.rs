@@ -299,6 +299,69 @@ impl Agent {
         self.settle(Duration::from_secs(3)).await;
         Ok(format!("Uploaded {}", names.join(", ")))
     }
+
+    /// Add files/images to the Assets tab (and the upload folder). Useful for sending an image from a
+    /// coding agent to the shared browser so people can see it or drag it into the page.
+    pub async fn add_asset(&self, mut paths: Vec<String>, files: &[UploadFile]) -> BResult<String> {
+        for f in files {
+            let n = safe_name(&f.name);
+            let data = base64::engine::general_purpose::STANDARD.decode(&f.data);
+            let (true, Ok(data)) = (!n.is_empty(), data) else {
+                return Err(format!(
+                    "files: {:?} needs a plain file name and base64 data",
+                    f.name
+                ));
+            };
+            if data.len() > 20 << 20 {
+                return Err(format!("files: {n:?} is bigger than 20 MB"));
+            }
+            write_0600(&crate::go_join(&self.b.opt.upload_dir, &n), &data)
+                .map_err(|e| e.to_string())?;
+            paths.push(n);
+        }
+        let abs = upload_paths(&self.b, &paths)?;
+        let mut out: Vec<String> = Vec::new();
+        if let Some(a) = crate::assets::global() {
+            for p in &abs {
+                let data = std::fs::read(p).map_err(|e| e.to_string())?;
+                let name = p.rsplit('/').next().unwrap_or(p).to_string();
+                let ext = match name.rfind('.') {
+                    Some(i) => &name[i..],
+                    None => "",
+                };
+                let mime = crate::assets::mime_by_extension(ext);
+                let mime = if mime.is_empty() {
+                    "application/octet-stream".to_string()
+                } else {
+                    mime
+                };
+                let kind = if mime.starts_with("image/") {
+                    "image"
+                } else {
+                    "file"
+                };
+                let asset = a.add(
+                    crate::assets::Asset {
+                        kind: kind.into(),
+                        name: name.clone(),
+                        mime,
+                        by: "agent".into(),
+                        ..Default::default()
+                    },
+                    Some(&data),
+                );
+                if let Some(asset) = asset {
+                    out.push(format!("{} ({})", asset.id, name));
+                }
+            }
+        } else {
+            return Err("assets are not initialised".into());
+        }
+        if out.is_empty() {
+            return Err("no assets added".into());
+        }
+        Ok(format!("Added to Assets: {}", out.join(", ")))
+    }
 }
 
 fn write_0600(path: &str, data: &[u8]) -> std::io::Result<()> {

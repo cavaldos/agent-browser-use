@@ -8,6 +8,7 @@
 | `browser_select_option` / `browser_scroll` / `browser_drag` | Pick `<select>` options, scroll, drag and drop |
 | `browser_wait_for` / `browser_wait_for_change` | Wait for text, or for the page to change on its own |
 | `browser_take_screenshot` / `browser_evaluate` | Screenshot the tab, or run JavaScript in the page |
+| `browser_add_asset` | Send an image or file from the coding agent to the shared browser's Assets tab (and the upload folder) |
 | `browser_tabs` / `browser_say` | Manage tabs, or show a message to the people watching |
 | `browser_console_messages` / `browser_network_requests` | Console output, exceptions and network requests (status, headers, response body). Action results also list new console errors and failed requests |
 | `browser_downloads` / `browser_file_upload` | Wait for and read downloaded files; fill `<input type=file>` from the upload folder |

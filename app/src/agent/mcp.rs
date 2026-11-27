@@ -771,6 +771,23 @@ impl McpServer {
                     Ok(out) => Self::with_snapshot(a, &seat, &out, "", Ok(())).await,
                 }
             }
+            "browser_add_asset"
+            | "browser_send_image"
+            | "browser_upload_image"
+            | "browser_image_upload"
+            | "browser_add_image"
+            | "browser_save_image"
+            | "browser_assets_add"
+            | "browser_asset_add"
+            | "browser_upload_asset"
+            | "browser_create_asset"
+            | "browser_import_asset"
+            | "browser_paste_asset"
+            | "browser_send_asset"
+            | "browser_new_asset" => match a.add_asset(args.paths.clone(), &args.files).await {
+                Err(e) => error_result(e),
+                Ok(out) => text_result(out),
+            },
             "browser_cookies" => try_text!(
                 a.cookies(CookieArgs {
                     action: args.action.clone(),
@@ -1224,7 +1241,7 @@ mod tests {
 
     #[test]
     fn tools_list_has_every_tool_in_go_field_order() {
-        assert_eq!(TOOLS.len(), 36);
+        assert_eq!(TOOLS.len(), 37);
         let s = go_json(&ToolsList { tools: &TOOLS });
         assert!(s.starts_with(r#"{"tools":[{"name":"browser_navigate","title":"Navigate to a URL","description":"Open a URL"#));
         // escapes < and > in strings

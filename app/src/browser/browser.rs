@@ -2716,6 +2716,50 @@ fn clamp01(v: f64) -> f64 {
 }
 
 impl Browser {
+    pub fn drop_file_cmd(&self, x: f64, y: f64, path: &str) {
+        let path = path.to_string();
+        self.enqueue(move |b| async move {
+            let (t, v) = {
+                let st = b.st();
+                (st.active.clone(), st.view)
+            };
+            let Some(t) = t else {
+                return;
+            };
+            let (px, py) = (
+                crate::browser::clamp01(x) * v.width as f64,
+                crate::browser::clamp01(y) * v.height as f64,
+            );
+            let d = Some(INPUT_TIMEOUT);
+            // items stays empty: newer Chrome requires DragDataItem.data, and the files
+            // alone arrive as a proper File drop ("Files" in the DataTransfer types).
+            for typ in ["dragEnter", "dragOver", "drop"] {
+                if let Err(e) = t
+                    .call(
+                        "Input.dispatchDragEvent",
+                        serde_json::json!({
+                            "type": typ,
+                            "x": px,
+                            "y": py,
+                            "modifiers": 0,
+                            "data": {
+                                "items": [],
+                                "files": [path],
+                                "dragOperationsMask": 1
+                            }
+                        }),
+                        d,
+                    )
+                    .await
+                {
+                    if !t.canceled() {
+                        golog(&format!("chrome: file drop ({typ}): {e}"));
+                    }
+                }
+            }
+        });
+    }
+
     pub fn mouse_cmd(&self, m: &Msg) {
         let kind = match m.event.as_str() {
             "move" => JobKind::Move,
@@ -2942,6 +2986,7 @@ pub trait BrowserApi: Send + Sync {
     /// `Key(m, onCopy)`: `on_copy` gets the copied text (called later, from the browser's own task).
     fn key(&self, m: &crate::Msg, on_copy: Box<dyn FnOnce(String) + Send>);
     fn text(&self, text: &str);
+    fn drop_file(&self, x: f64, y: f64, path: &str);
     fn new_tab(&self, url: &str);
     fn close_tab(&self, id: &str);
     fn activate_tab(&self, id: &str);
@@ -2980,6 +3025,9 @@ impl BrowserApi for Browser {
     }
     fn text(&self, text: &str) {
         self.text_cmd(text);
+    }
+    fn drop_file(&self, x: f64, y: f64, path: &str) {
+        self.drop_file_cmd(x, y, path);
     }
     fn new_tab(&self, url: &str) {
         self.new_tab_cmd(url);
